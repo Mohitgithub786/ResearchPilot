@@ -1,21 +1,37 @@
 services:
   - type: web
-    name: researchpilot
-    env: docker
+    name: researchpilot-backend
+    runtime: docker
     plan: free
     healthCheckPath: /health
-    disk:
-      name: data
-      mountPath: /app/data
-      sizeGB: 1
+
     envVars:
-      - key: PORT
-        value: 8000
+      - key: CHUNK_SIZE
+        value: "1000"
+
+      - key: CHUNK_OVERLAP
+        value: "200"
+
       - key: EMBEDDING_PROVIDER
         value: openai
+
       - key: LLM_PROVIDER
         value: groq
+
       - key: OPENAI_API_KEY
         sync: false
+
       - key: GROQ_API_KEY
+        sync: false
+
+  - type: web
+    name: researchpilot-frontend
+    runtime: python
+    plan: free
+    rootDir: gradio_app
+    buildCommand: pip install -r ../requirements.txt
+    startCommand: python app.py
+
+    envVars:
+      - key: FASTAPI_BASE_URL
         sync: false
