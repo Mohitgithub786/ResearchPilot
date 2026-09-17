@@ -1,0 +1,11 @@
+-r requirements.txt
+
+# Testing
+pytest
+
+# Formatting & linting
+black
+ruff
+
+# Git hooks
+pre-commit

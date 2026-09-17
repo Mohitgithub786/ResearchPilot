@@ -1,0 +1,35 @@
+# Version control
+.git
+.gitignore
+
+# Python environments
+.venv
+venv
+env
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.ruff_cache
+
+# Application data
+data/
+*.db
+*.sqlite
+*.sqlite3
+chroma_db/
+uploads/
+
+# IDE and Editor files
+.vscode
+.idea
+*.swp
+*.swo
+
+# Env files
+.env
+diff.txt
+
+# Artifacts
+*.log
