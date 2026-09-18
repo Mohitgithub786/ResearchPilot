@@ -112,6 +112,3 @@ def health_check():
         
     return health_status
 
-import gradio as gr
-from gradio_app.app import demo
-app = gr.mount_gradio_app(app, demo, path="/")
