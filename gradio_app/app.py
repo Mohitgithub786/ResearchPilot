@@ -61,6 +61,37 @@ def list_sessions() -> str:
     except Exception as exc:
         return f"Error listing sessions: {exc}"
 
+def upload_pdf(filepath) -> str:
+    if not filepath:
+        return "Please select a file to upload."
+    try:
+        with open(filepath, 'rb') as f:
+            files = {'file': (os.path.basename(filepath), f, 'application/pdf')}
+            response = requests.post(f"{FASTAPI_BASE_URL}/documents/upload", files=files, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            return f"Upload successful!\nDocument ID: {data['id']}\nFilename: {data['filename']}\nChunks Created: {data['chunk_count']}"
+    except Exception as exc:
+        return f"Error uploading PDF: {exc}"
+
+def list_chunks(doc_id: str) -> str:
+    if not doc_id.strip():
+        return "Please enter a Document ID."
+    try:
+        response = requests.get(f"{FASTAPI_BASE_URL}/documents/{doc_id.strip()}/chunks", timeout=10)
+        response.raise_for_status()
+        chunks = response.json()
+        if not chunks:
+            return "No chunks found."
+        
+        result = []
+        for c in chunks:
+            text = c['chunk_text'].replace('\n', ' ')[:80] + "..."
+            result.append(f"[Chunk {c['chunk_order']} | Page {c['page_number']}] {text}")
+        return "\n".join(result)
+    except Exception as exc:
+        return f"Error fetching chunks: {exc}"
+
 with gr.Blocks(title="ResearchPilot") as demo:
     gr.Markdown("# ResearchPilot")
     
@@ -93,6 +124,26 @@ with gr.Blocks(title="ResearchPilot") as demo:
                 
                 create_session_btn.click(fn=create_session, inputs=[], outputs=session_output)
                 list_sessions_btn.click(fn=list_sessions, inputs=[], outputs=session_output)
+
+    with gr.Tab("Phase 4: Ingestion"):
+        gr.Markdown("Upload a real PDF file. The backend will parse it, chunk the text, and store the chunks in the database.")
+        
+        with gr.Row():
+            with gr.Column():
+                gr.Markdown("### Upload PDF")
+                pdf_input = gr.File(label="Select PDF File", file_types=[".pdf"])
+                upload_btn = gr.Button("Upload & Process PDF")
+                upload_output = gr.Textbox(label="Upload Output", interactive=False, lines=4)
+                
+                upload_btn.click(fn=upload_pdf, inputs=pdf_input, outputs=upload_output)
+                
+            with gr.Column():
+                gr.Markdown("### View Chunks")
+                chunk_doc_id = gr.Textbox(label="Enter Document ID (e.g. 1)")
+                view_chunks_btn = gr.Button("View Document Chunks")
+                chunks_output = gr.Textbox(label="Chunks Preview", interactive=False, lines=10)
+                
+                view_chunks_btn.click(fn=list_chunks, inputs=chunk_doc_id, outputs=chunks_output)
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=int(os.getenv("PORT", "7860")))
