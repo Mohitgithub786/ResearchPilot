@@ -176,5 +176,56 @@ with gr.Blocks(title="ResearchPilot") as demo:
                 
         search_btn.click(fn=retrieve_chunks, inputs=query_input, outputs=search_output)
 
+    with gr.Tab("Phase 6 & 7: Conversational RAG"):
+        gr.Markdown("Chat with your uploaded documents using context retrieval and session-based memory.")
+        
+        chat_session_id = gr.Textbox(label="Session ID (Create one in Phase 3 first!)", value="1")
+        chatbot = gr.Chatbot(label="Research Assistant")
+        
+        with gr.Row():
+            chat_input = gr.Textbox(label="Your Message", placeholder="Type your question here...")
+            chat_submit = gr.Button("Send")
+            
+        def submit_message(msg, history):
+            return "", history + [[msg, None]]
+            
+        def get_bot_response(history, sid):
+            if not history:
+                return history
+            user_msg = history[-1][0]
+            
+            if not sid.strip() or not sid.strip().isdigit():
+                history[-1][1] = "Please enter a valid numeric Session ID."
+                return history
+                
+            try:
+                response = requests.post(
+                    f"{FASTAPI_BASE_URL}/chat", 
+                    json={"session_id": int(sid.strip()), "question": user_msg}, 
+                    timeout=60
+                )
+                response.raise_for_status()
+                data = response.json()
+                
+                ans = data.get("answer", "No answer provided.")
+                sources = data.get("sources", [])
+                
+                if sources:
+                    src_text = "\n\n**Sources:**\n" + "\n".join([f"- {s.get('filename', 'Unknown')} (Page {s.get('page_number', '?')})" for s in sources])
+                    ans += src_text
+                    
+                history[-1][1] = ans
+            except Exception as exc:
+                history[-1][1] = f"Error: {exc}"
+            
+            return history
+
+        chat_submit.click(fn=submit_message, inputs=[chat_input, chatbot], outputs=[chat_input, chatbot]).then(
+            fn=get_bot_response, inputs=[chatbot, chat_session_id], outputs=[chatbot]
+        )
+        chat_input.submit(fn=submit_message, inputs=[chat_input, chatbot], outputs=[chat_input, chatbot]).then(
+            fn=get_bot_response, inputs=[chatbot, chat_session_id], outputs=[chatbot]
+        )
+
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=int(os.getenv("PORT", "7860")))
