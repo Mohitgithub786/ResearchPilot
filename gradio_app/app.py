@@ -57,7 +57,7 @@ def list_sessions() -> str:
         sessions = response.json()
         if not sessions:
             return "No sessions found."
-        return "\n".join([f"[{s['session_id']}] {s['title']} (Created: {s['created_at']})" for s in sessions])
+        return "\n".join([f"[{s['id']}] {s['title']} (Created: {s['created_at']})" for s in sessions])
     except Exception as exc:
         return f"Error listing sessions: {exc}"
 
