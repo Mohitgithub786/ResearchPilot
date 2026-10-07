@@ -268,5 +268,16 @@ with gr.Blocks(title="ResearchPilot") as demo:
                 
         run_agent_btn.click(fn=run_research_agent, inputs=research_query, outputs=research_output)
 
+    with gr.Tab("Phase 9: Observability"):
+        gr.Markdown("### Logging & Streaming")
+        gr.Markdown("Phase 9 focuses on backend observability. The FastAPI server uses structured logging to track agent steps, database queries, and vector searches. Check your terminal running `start.bat` to see these detailed logs in real-time while you use the other tabs!")
+
+    with gr.Tab("Phase 10: Deployment"):
+        gr.Markdown("### Dockerization & CI/CD")
+        gr.Markdown("The project is now fully production-ready (Final Phase).")
+        gr.Markdown("To run this in a production environment (like AWS or Render), you can use the included Docker setup:")
+        gr.Code("docker-compose up --build", language="bash")
+        gr.Markdown("This spins up the FastAPI backend and ChromaDB containerized environments seamlessly.")
+
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=int(os.getenv("PORT", "7860")))
