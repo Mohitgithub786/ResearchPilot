@@ -276,7 +276,7 @@ with gr.Blocks(title="ResearchPilot") as demo:
         gr.Markdown("### Dockerization & CI/CD")
         gr.Markdown("The project is now fully production-ready (Final Phase).")
         gr.Markdown("To run this in a production environment (like AWS or Render), you can use the included Docker setup:")
-        gr.Code("docker-compose up --build", language="bash")
+        gr.Code("docker-compose up --build", language="shell")
         gr.Markdown("This spins up the FastAPI backend and ChromaDB containerized environments seamlessly.")
 
 if __name__ == "__main__":
