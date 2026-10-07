@@ -6,7 +6,7 @@ import gradio as gr
 load_dotenv()
 
 FASTAPI_BASE_URL = os.getenv(
-    "FASTAPI_BASE_URL", "http://127.0.0.1:8000"
+    "FASTAPI_BASE_URL", "https://researchpilot-irt9.onrender.com"
 ).rstrip("/")
 
 def test_fastapi_connection(name: str) -> str:
