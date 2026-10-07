@@ -111,6 +111,35 @@ def retrieve_chunks(query: str) -> str:
     except Exception as exc:
         return f"Error retrieving chunks: {exc}"
 
+def run_research_agent(query: str) -> str:
+    if not query.strip():
+        return "Please enter a research query."
+    try:
+        response = requests.post(
+            f"{FASTAPI_BASE_URL}/research", 
+            json={"query": query.strip()}, 
+            timeout=120
+        )
+        response.raise_for_status()
+        data = response.json()
+        
+        summary = data.get("summary", "")
+        key_findings = data.get("key_findings", [])
+        sources = data.get("sources", [])
+        
+        result = f"### Summary\n{summary}\n\n### Key Findings\n"
+        for finding in key_findings:
+            result += f"- {finding}\n"
+            
+        if sources:
+            result += "\n### Sources\n"
+            for s in sources:
+                result += f"- {s.get('filename', 'Unknown')} (Page {s.get('page_number', '?')})\n"
+                
+        return result
+    except Exception as exc:
+        return f"Error running research agent: {exc}"
+
 with gr.Blocks(title="ResearchPilot") as demo:
     gr.Markdown("# ResearchPilot")
     
@@ -226,6 +255,18 @@ with gr.Blocks(title="ResearchPilot") as demo:
         chat_input.submit(fn=submit_message, inputs=[chat_input, chatbot], outputs=[chat_input, chatbot]).then(
             fn=get_bot_response, inputs=[chatbot, chat_session_id], outputs=[chatbot]
         )
+
+    with gr.Tab("Phase 8: Agentic Research"):
+        gr.Markdown("Run a multi-step LangGraph agent to plan, retrieve, and write a structured research report.")
+        
+        with gr.Row():
+            with gr.Column():
+                research_query = gr.Textbox(label="Research Topic", placeholder="e.g. Compare positional encoding methods.")
+                run_agent_btn = gr.Button("Run Agentic Research")
+            with gr.Column():
+                research_output = gr.Markdown("Report will appear here...")
+                
+        run_agent_btn.click(fn=run_research_agent, inputs=research_query, outputs=research_output)
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=int(os.getenv("PORT", "7860")))
