@@ -209,7 +209,7 @@ with gr.Blocks(title="ResearchPilot") as demo:
         gr.Markdown("Chat with your uploaded documents using context retrieval and session-based memory.")
         
         chat_session_id = gr.Textbox(label="Session ID (Create one in Phase 3 first!)", value="1")
-        chatbot = gr.Chatbot(label="Research Assistant", type="messages")
+        chatbot = gr.Chatbot(label="Research Assistant")
         
         with gr.Row():
             chat_input = gr.Textbox(label="Your Message", placeholder="Type your question here...")
