@@ -209,22 +209,24 @@ with gr.Blocks(title="ResearchPilot") as demo:
         gr.Markdown("Chat with your uploaded documents using context retrieval and session-based memory.")
         
         chat_session_id = gr.Textbox(label="Session ID (Create one in Phase 3 first!)", value="1")
-        chatbot = gr.Chatbot(label="Research Assistant")
+        chatbot = gr.Chatbot(label="Research Assistant", type="messages")
         
         with gr.Row():
             chat_input = gr.Textbox(label="Your Message", placeholder="Type your question here...")
             chat_submit = gr.Button("Send")
             
         def submit_message(msg, history):
-            return "", history + [[msg, None]]
+            history.append({"role": "user", "content": msg})
+            return "", history
             
         def get_bot_response(history, sid):
             if not history:
                 return history
-            user_msg = history[-1][0]
+            
+            user_msg = history[-1]["content"]
             
             if not sid.strip() or not sid.strip().isdigit():
-                history[-1][1] = "Please enter a valid numeric Session ID."
+                history.append({"role": "assistant", "content": "Please enter a valid numeric Session ID."})
                 return history
                 
             try:
@@ -243,9 +245,9 @@ with gr.Blocks(title="ResearchPilot") as demo:
                     src_text = "\n\n**Sources:**\n" + "\n".join([f"- {s.get('filename', 'Unknown')} (Page {s.get('page_number', '?')})" for s in sources])
                     ans += src_text
                     
-                history[-1][1] = ans
+                history.append({"role": "assistant", "content": ans})
             except Exception as exc:
-                history[-1][1] = f"Error: {exc}"
+                history.append({"role": "assistant", "content": f"Error: {exc}"})
             
             return history
 
