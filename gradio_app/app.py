@@ -92,6 +92,25 @@ def list_chunks(doc_id: str) -> str:
     except Exception as exc:
         return f"Error fetching chunks: {exc}"
 
+def retrieve_chunks(query: str) -> str:
+    if not query.strip():
+        return "Please enter a search query."
+    try:
+        response = requests.post(f"{FASTAPI_BASE_URL}/retrieve", json={"query": query.strip()}, timeout=30)
+        response.raise_for_status()
+        chunks = response.json()
+        if not chunks:
+            return "No matching chunks found."
+        
+        result = []
+        for c in chunks:
+            score = round(c.get('similarity_score', 0), 4)
+            text = c['chunk_text'].replace('\n', ' ')
+            result.append(f"[{score}] {c['source_filename']} (Page {c['page_number']}):\n{text}\n")
+        return "\n".join(result)
+    except Exception as exc:
+        return f"Error retrieving chunks: {exc}"
+
 with gr.Blocks(title="ResearchPilot") as demo:
     gr.Markdown("# ResearchPilot")
     
@@ -144,6 +163,18 @@ with gr.Blocks(title="ResearchPilot") as demo:
                 chunks_output = gr.Textbox(label="Chunks Preview", interactive=False, lines=10)
                 
                 view_chunks_btn.click(fn=list_chunks, inputs=chunk_doc_id, outputs=chunks_output)
+
+    with gr.Tab("Phase 5: Retrieval"):
+        gr.Markdown("Search across all embedded document chunks using ChromaDB vector similarity.")
+        
+        with gr.Row():
+            with gr.Column():
+                query_input = gr.Textbox(label="Search Query", placeholder="e.g. What is positional encoding?")
+                search_btn = gr.Button("Search Vectors")
+            with gr.Column():
+                search_output = gr.Textbox(label="Top Matching Chunks", interactive=False, lines=12)
+                
+        search_btn.click(fn=retrieve_chunks, inputs=query_input, outputs=search_output)
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=int(os.getenv("PORT", "7860")))
