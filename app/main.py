@@ -112,3 +112,7 @@ def health_check():
         
     return health_status
 
+# Mount the Gradio UI at the root
+import gradio as gr
+from gradio_app.app import demo
+app = gr.mount_gradio_app(app, demo, path="/")
