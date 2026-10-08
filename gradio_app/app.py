@@ -247,6 +247,27 @@ button.tab-nav.selected {
     transform: translateY(-1px);
     box-shadow: 0 4px 14px 0 rgba(99, 102, 241, 0.39) !important;
 }
+
+/* Sidebar Panel Styling */
+.sidebar-panel {
+    background-color: #0f172a !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+    padding: 1rem !important;
+    border-radius: 12px !important;
+}
+
+/* Chat Input Bar Styling */
+.gr-textbox textarea {
+    background-color: #1e293b !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    border-radius: 10px !important;
+    color: #f8fafc !important;
+}
+
+.gr-textbox textarea:focus {
+    border-color: #8b5cf6 !important;
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.25) !important;
+}
 """
 
 theme = gr.themes.Soft(
@@ -264,46 +285,70 @@ with gr.Blocks(title="ResearchPilot | AI Agent", theme=theme, css=custom_css) as
     
     with gr.Tabs():
         with gr.TabItem("💬 Conversational RAG"):
-            gr.Markdown("Have a fluid conversation with your uploaded documents using context retrieval.")
-            
-            with gr.Accordion("Session Settings (Advanced)", open=False):
-                chat_session_id = gr.Textbox(label="Active Session ID", value="1", info="Change this to chat in a different context.")
-                
-            chatbot = gr.Chatbot(label="ResearchPilot Assistant", height=450)
-            
             with gr.Row():
-                chat_input = gr.Textbox(label="", placeholder="Type your question here and hit Enter...", scale=8)
-                chat_submit = gr.Button("Send", variant="primary", scale=1)
+                with gr.Column(scale=1, min_width=280, elem_classes=["sidebar-panel"]):
+                    gr.Markdown("### ⚙️ Context Settings")
+                    gr.Markdown("Have a fluid conversation with your uploaded documents using context retrieval.")
+                    with gr.Accordion("Session Settings", open=True):
+                        chat_session_id = gr.Textbox(label="Active Session ID", value="1", info="Change this to chat in a different context.")
                 
-            def submit_message(msg, history):
-                history.append({"role": "user", "content": msg})
-                return "", history
-                
-            def get_bot_response(history, sid):
-                if not history: return history
-                user_content = history[-1]["content"] if isinstance(history[-1], dict) else (history[-1].content if hasattr(history[-1], "content") else history[-1][0]); user_msg = user_content[0]["text"] if isinstance(user_content, list) and len(user_content) > 0 and isinstance(user_content[0], dict) else str(user_content)
-                if not sid.strip() or not sid.strip().isdigit():
-                    history.append({"role": "assistant", "content": "Please enter a valid numeric Session ID in Settings."})
-                    return history
-                try:
-                    response = requests.post(f"{FASTAPI_BASE_URL}/chat", json={"session_id": int(sid.strip()), "question": user_msg}, timeout=60)
-                    response.raise_for_status()
-                    data = response.json()
-                    ans = data.get("answer", "No answer provided.")
-                    sources = data.get("sources", [])
-                    if sources:
-                        ans += "\n\n**Sources:**\n" + "\n".join([f"- {s.get('filename', 'Unknown')} (Page {s.get('page_number', '?')})" for s in sources])
-                    history.append({"role": "assistant", "content": ans})
-                except Exception as exc:
-                    history.append({"role": "assistant", "content": f"Error: {exc}"})
-                return history
+                with gr.Column(scale=3):
+                    with gr.Row():
+                        btn_1 = gr.Button("📄 Summarize uploaded document", size="sm")
+                        btn_2 = gr.Button("🔍 Find key research methodology", size="sm")
+                        btn_3 = gr.Button("📊 Extract data metrics & tables", size="sm")
+                        
+                    chatbot = gr.Chatbot(label="ResearchPilot Assistant", height=580, show_copy_button=True, bubble_full_width=False, render_markdown=True)
+                    
+                    with gr.Row():
+                        chat_input = gr.Textbox(label="", placeholder="Type your question here and hit Enter...", scale=8)
+                        chat_submit = gr.Button("Send", variant="primary", scale=1)
+                        
+                    def submit_message(msg, history):
+                        history.append({"role": "user", "content": msg})
+                        return "", history
+                        
+                    def get_bot_response(history, sid):
+                        if not history: return history
+                        user_content = history[-1]["content"] if isinstance(history[-1], dict) else (history[-1].content if hasattr(history[-1], "content") else history[-1][0]); user_msg = user_content[0]["text"] if isinstance(user_content, list) and len(user_content) > 0 and isinstance(user_content[0], dict) else str(user_content)
+                        if not sid.strip() or not sid.strip().isdigit():
+                            history.append({"role": "assistant", "content": "Please enter a valid numeric Session ID in Settings."})
+                            return history
+                        try:
+                            response = requests.post(f"{FASTAPI_BASE_URL}/chat", json={"session_id": int(sid.strip()), "question": user_msg}, timeout=60)
+                            response.raise_for_status()
+                            data = response.json()
+                            ans = data.get("answer", "No answer provided.")
+                            sources = data.get("sources", [])
+                            if sources:
+                                ans += "\n\n**Sources:**\n" + "\n".join([f"- {s.get('filename', 'Unknown')} (Page {s.get('page_number', '?')})" for s in sources])
+                            history.append({"role": "assistant", "content": ans})
+                        except Exception as exc:
+                            history.append({"role": "assistant", "content": f"Error: {exc}"})
+                        return history
 
-            chat_submit.click(fn=submit_message, inputs=[chat_input, chatbot], outputs=[chat_input, chatbot]).then(
-                fn=get_bot_response, inputs=[chatbot, chat_session_id], outputs=[chatbot]
-            )
-            chat_input.submit(fn=submit_message, inputs=[chat_input, chatbot], outputs=[chat_input, chatbot]).then(
-                fn=get_bot_response, inputs=[chatbot, chat_session_id], outputs=[chatbot]
-            )
+                    chat_submit.click(fn=submit_message, inputs=[chat_input, chatbot], outputs=[chat_input, chatbot]).then(
+                        fn=get_bot_response, inputs=[chatbot, chat_session_id], outputs=[chatbot]
+                    )
+                    chat_input.submit(fn=submit_message, inputs=[chat_input, chatbot], outputs=[chat_input, chatbot]).then(
+                        fn=get_bot_response, inputs=[chatbot, chat_session_id], outputs=[chatbot]
+                    )
+                    
+                    btn_1.click(lambda: "Summarize uploaded document", None, chat_input).then(
+                        fn=submit_message, inputs=[chat_input, chatbot], outputs=[chat_input, chatbot]
+                    ).then(
+                        fn=get_bot_response, inputs=[chatbot, chat_session_id], outputs=[chatbot]
+                    )
+                    btn_2.click(lambda: "Find key research methodology", None, chat_input).then(
+                        fn=submit_message, inputs=[chat_input, chatbot], outputs=[chat_input, chatbot]
+                    ).then(
+                        fn=get_bot_response, inputs=[chatbot, chat_session_id], outputs=[chatbot]
+                    )
+                    btn_3.click(lambda: "Extract data metrics & tables", None, chat_input).then(
+                        fn=submit_message, inputs=[chat_input, chatbot], outputs=[chat_input, chatbot]
+                    ).then(
+                        fn=get_bot_response, inputs=[chatbot, chat_session_id], outputs=[chatbot]
+                    )
 
         with gr.TabItem("🧠 Agentic Researcher"):
             gr.Markdown("Deploy an autonomous LangGraph agent to plan, iteratively search, and compile a structured multi-source report.")
