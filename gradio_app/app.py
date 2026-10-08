@@ -185,7 +185,7 @@ with gr.Blocks(title="ResearchPilot | AI Agent", theme=theme, css=custom_css) as
                 
             def get_bot_response(history, sid):
                 if not history: return history
-                user_msg = history[-1]["content"] if isinstance(history[-1], dict) else (history[-1].content if hasattr(history[-1], "content") else history[-1][0])
+                user_content = history[-1]["content"] if isinstance(history[-1], dict) else (history[-1].content if hasattr(history[-1], "content") else history[-1][0]); user_msg = user_content[0]["text"] if isinstance(user_content, list) and len(user_content) > 0 and isinstance(user_content[0], dict) else str(user_content)
                 if not sid.strip() or not sid.strip().isdigit():
                     history.append({"role": "assistant", "content": "Please enter a valid numeric Session ID in Settings."})
                     return history
