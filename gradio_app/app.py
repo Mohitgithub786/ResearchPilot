@@ -64,30 +64,31 @@ def list_sessions() -> str:
 
 def upload_pdf(filepath) -> str:
     import time
+    import os
     if not filepath:
         return "<div style='color:#ef4444'>Please select a file to upload.</div>"
     try:
-        with open(filepath, 'rb') as f:
-            files = {'file': (os.path.basename(filepath), f, 'application/pdf')}
-            response = requests.post(f"{FASTAPI_BASE_URL}/documents/upload", files=files, timeout=30)
-            response.raise_for_status()
-            data = response.json()
-            task_id = data.get("task_id")
-            if not task_id:
-                return "<div style='color:#ef4444'>Upload accepted, but no task ID returned.</div>"
+        from app.database.session import SessionLocal
+        from app.services.ingestion import ingest_pdf
+        import shutil
+        import uuid
+        
+        db = SessionLocal()
+        try:
+            filename = os.path.basename(filepath)
             
-            # Poll status
-            for _ in range(60): # 1 minute timeout
-                status_res = requests.get(f"{FASTAPI_BASE_URL}/documents/status/{task_id}")
-                status_res.raise_for_status()
-                sdata = status_res.json()
-                if sdata.get("completed"):
-                    filename = os.path.basename(filepath)
-                    return f"<div style='padding:15px; border-radius:12px; background:rgba(30,41,59,0.7); border:1px solid rgba(255,255,255,0.1);'><div style='display:flex; justify-content:space-between; align-items:center;'><b>📄 {filename}</b><span style='background:rgba(74,222,128,0.2); color:#4ade80; padding:4px 8px; border-radius:12px; font-size:0.8rem; font-weight:600;'>✅ Indexed</span></div></div>"
-                elif sdata.get("failed"):
-                    return f"<div style='color:#ef4444'>Error processing PDF: {sdata.get('error')}</div>"
-                time.sleep(1)
-            return "<div style='color:#fbbf24'>Upload processing timed out.</div>"
+            class MockUploadFile:
+                def __init__(self, filename, file):
+                    self.filename = filename
+                    self.file = file
+                    
+            with open(filepath, "rb") as f:
+                mock_file = MockUploadFile(filename, f)
+                document, chunk_count = ingest_pdf(db, mock_file)
+                
+            return f"<div style='padding:15px; border-radius:12px; background:rgba(30,41,59,0.7); border:1px solid rgba(255,255,255,0.1);'><div style='display:flex; justify-content:space-between; align-items:center;'><b>📄 {filename}</b><span style='background:rgba(74,222,128,0.2); color:#4ade80; padding:4px 8px; border-radius:12px; font-size:0.8rem; font-weight:600;'>✅ Indexed ({chunk_count} chunks)</span></div></div>"
+        finally:
+            db.close()
     except Exception as exc:
         return f"<div style='color:#ef4444'>Error uploading PDF: {exc}</div>"
 

@@ -15,7 +15,13 @@ CHROMA_DIR.mkdir(parents=True, exist_ok=True)
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1000"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "200"))
 
-EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "openai").lower()
+# --- OVERRIDES FOR RENDER FREE TIER ---
+# We force these settings so that the app doesn't OOM or crash
+# regardless of what is pasted in the Render dashboard.
+os.environ["EMBEDDING_PROVIDER"] = "openai"
+os.environ["GROQ_MODEL"] = "llama3-70b-8192"
+
+EMBEDDING_PROVIDER = "openai"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_EMBEDDING_MODEL = os.getenv(
     "OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
@@ -30,7 +36,7 @@ RETRIEVAL_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "5"))
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq").lower()
 OPENAI_LLM_MODEL = os.getenv("OPENAI_LLM_MODEL", "gpt-4o-mini")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL = "llama3-70b-8192"
 
 MEMORY_WINDOW = int(os.getenv("MEMORY_WINDOW", "5"))
 
