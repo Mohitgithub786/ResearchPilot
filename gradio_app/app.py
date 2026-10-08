@@ -275,7 +275,7 @@ theme = gr.themes.Soft(
     neutral_hue="slate"
 )
 
-with gr.Blocks(title="ResearchPilot | AI Agent", theme=theme, css=custom_css) as demo:
+with gr.Blocks(title="ResearchPilot | AI Agent") as demo:
     gr.HTML('''
     <div class="header-container">
         <div class="header-title">🚀 ResearchPilot</div>
@@ -298,7 +298,7 @@ with gr.Blocks(title="ResearchPilot | AI Agent", theme=theme, css=custom_css) as
                         btn_2 = gr.Button("🔍 Find key research methodology", size="sm")
                         btn_3 = gr.Button("📊 Extract data metrics & tables", size="sm")
                         
-                    chatbot = gr.Chatbot(label="ResearchPilot Assistant", height=580, show_copy_button=True, bubble_full_width=False, render_markdown=True)
+                    chatbot = gr.Chatbot(label="ResearchPilot Assistant", height=580)
                     
                     with gr.Row():
                         chat_input = gr.Textbox(label="", placeholder="Type your question here and hit Enter...", scale=8)
@@ -422,6 +422,6 @@ with gr.Blocks(title="ResearchPilot | AI Agent", theme=theme, css=custom_css) as
                     test_button.click(fn=test_fastapi_connection, inputs=name_input, outputs=test_output)
 
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=int(os.getenv("PORT", "7860")))
+    demo.launch(server_name="0.0.0.0", server_port=int(os.getenv("PORT", "7860")), theme=theme, css=custom_css)
 
 
