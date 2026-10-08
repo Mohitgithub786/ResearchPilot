@@ -133,45 +133,49 @@ def run_research_agent(query: str):
         yield ("<div style='color:#ef4444'>Please enter a research query.</div>", "No query provided.")
         return
     try:
-        response = requests.get(
-            f"{FASTAPI_BASE_URL}/stream", 
-            params={"query": query.strip()}, 
-            stream=True,
-            timeout=120
-        )
-        response.raise_for_status()
+        from app.services.research_agent import stream_research
+        import asyncio
         
         status_log = "<div style='display:flex; flex-direction:column; gap:8px;'>"
         output = ""
-        import json
-        for line in response.iter_lines():
-            if line:
-                decoded = line.decode('utf-8')
-                if decoded.startswith("data: "):
-                    try:
-                        data = json.loads(decoded[6:])
-                        if data.get("type") == "status":
-                            node = data.get('node')
-                            status = data.get('status')
-                            color = "#4ade80" if status == "completed" else "#fbbf24"
-                            status_log += f"<div style='font-size:0.95rem; padding:8px; background:rgba(255,255,255,0.05); border-radius:8px;'><span style='color:{color}; margin-right:8px;'>●</span> <b>{node}</b> <span style='color:#94a3b8'><i>{status}...</i></span></div>\n"
-                            yield (status_log + "</div>", output)
-                        elif data.get("type") == "token":
-                            output += data.get("content", "")
-                            yield (status_log + "</div>", output)
-                        elif data.get("type") == "sources":
-                            sources = data.get("sources", [])
-                            if sources:
-                                sources_md = "\n\n### Interactive Citations\n"
-                                for s in sources:
-                                    filename = s.get('filename', 'Unknown')
-                                    page = s.get('page_number', '?')
-                                    text = s.get('chunk_text', '').replace('\n', '<br>')
-                                    sources_md += f"<details style='margin-bottom:8px; border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:10px; background:#1e293b;'><summary style='cursor:pointer; font-weight:600; color:#818cf8;'>📄 {filename} (Page {page})</summary><p style='margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.05); color:#cbd5e1;'>{text}</p></details>\n"
-                                output += sources_md
-                                yield (status_log + "</div>", output)
-                    except json.JSONDecodeError:
-                        pass
+        
+        # We need to run the async generator in a sync context since Gradio generator is sync here
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        async def consume():
+            nonlocal status_log, output
+            results = []
+            async for data in stream_research(query.strip()):
+                results.append(data)
+            return results
+            
+        events = loop.run_until_complete(consume())
+        loop.close()
+        
+        # Yield the events (note: this turns it into a batch yield rather than true streaming, 
+        # but prevents any network timeout/disconnect issues on Render's free tier proxy)
+        for data in events:
+            if data.get("type") == "status":
+                node = data.get('node')
+                status = data.get('status')
+                color = "#4ade80" if status == "completed" else "#fbbf24"
+                status_log += f"<div style='font-size:0.95rem; padding:8px; background:rgba(255,255,255,0.05); border-radius:8px;'><span style='color:{color}; margin-right:8px;'>●</span> <b>{node}</b> <span style='color:#94a3b8'><i>{status}...</i></span></div>\n"
+                yield (status_log + "</div>", output)
+            elif data.get("type") == "token":
+                output += data.get("content", "")
+                yield (status_log + "</div>", output)
+            elif data.get("type") == "sources":
+                sources = data.get("sources", [])
+                if sources:
+                    sources_md = "\n\n### Interactive Citations\n"
+                    for s in sources:
+                        filename = s.get('filename', 'Unknown')
+                        page = s.get('page_number', '?')
+                        text = s.get('chunk_text', '').replace('\n', '<br>')
+                        sources_md += f"<details style='margin-bottom:8px; border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:10px; background:#1e293b;'><summary style='cursor:pointer; font-weight:600; color:#818cf8;'>📄 {filename} (Page {page})</summary><p style='margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.05); color:#cbd5e1;'>{text}</p></details>\n"
+                    output += sources_md
+                    yield (status_log + "</div>", output)
     except Exception as exc:
         yield (f"<div style='color:#ef4444'>Error: {exc}</div>", "")
 
@@ -315,14 +319,18 @@ with gr.Blocks(title="ResearchPilot | AI Agent") as demo:
                             history.append({"role": "assistant", "content": "Please enter a valid numeric Session ID in Settings."})
                             return history
                         try:
-                            response = requests.post(f"{FASTAPI_BASE_URL}/chat", json={"session_id": int(sid.strip()), "question": user_msg}, timeout=60)
-                            response.raise_for_status()
-                            data = response.json()
-                            ans = data.get("answer", "No answer provided.")
-                            sources = data.get("sources", [])
-                            if sources:
-                                ans += "\n\n**Sources:**\n" + "\n".join([f"- {s.get('filename', 'Unknown')} (Page {s.get('page_number', '?')})" for s in sources])
-                            history.append({"role": "assistant", "content": ans})
+                            from app.services.rag_service import generate_chat_response
+                            from app.database.session import SessionLocal
+                            db = SessionLocal()
+                            try:
+                                response = generate_chat_response(db, user_msg, int(sid.strip()))
+                                ans = response.answer
+                                sources = response.sources
+                                if sources:
+                                    ans += "\n\n**Sources:**\n" + "\n".join([f"- {s.filename} (Page {s.page_number})" for s in sources])
+                                history.append({"role": "assistant", "content": ans})
+                            finally:
+                                db.close()
                         except Exception as exc:
                             history.append({"role": "assistant", "content": f"Error: {exc}"})
                         return history
