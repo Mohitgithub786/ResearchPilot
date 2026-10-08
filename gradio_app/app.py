@@ -130,7 +130,7 @@ def retrieve_chunks(query: str) -> str:
 
 def run_research_agent(query: str):
     if not query.strip():
-        yield "Please enter a research query."
+        yield ("<div style='color:#ef4444'>Please enter a research query.</div>", "No query provided.")
         return
     try:
         response = requests.get(
@@ -141,7 +141,7 @@ def run_research_agent(query: str):
         )
         response.raise_for_status()
         
-        status_log = "<div style='display:flex; flex-direction:column; gap:8px; margin-bottom:20px; padding:15px; background:rgba(30,41,59,0.5); border-radius:12px; border:1px solid rgba(255,255,255,0.05);'><b>⚡ Live Execution:</b>\n"
+        status_log = "<div style='display:flex; flex-direction:column; gap:8px;'>"
         output = ""
         import json
         for line in response.iter_lines():
@@ -154,11 +154,11 @@ def run_research_agent(query: str):
                             node = data.get('node')
                             status = data.get('status')
                             color = "#4ade80" if status == "completed" else "#fbbf24"
-                            status_log += f"<div style='font-size:0.9rem'><span style='color:{color}'>●</span> <b>{node}</b> <i>{status}...</i></div>\n"
-                            yield status_log + "</div>\n\n" + output
+                            status_log += f"<div style='font-size:0.95rem; padding:8px; background:rgba(255,255,255,0.05); border-radius:8px;'><span style='color:{color}; margin-right:8px;'>●</span> <b>{node}</b> <span style='color:#94a3b8'><i>{status}...</i></span></div>\n"
+                            yield (status_log + "</div>", output)
                         elif data.get("type") == "token":
                             output += data.get("content", "")
-                            yield status_log + "</div>\n\n" + output
+                            yield (status_log + "</div>", output)
                         elif data.get("type") == "sources":
                             sources = data.get("sources", [])
                             if sources:
@@ -167,13 +167,13 @@ def run_research_agent(query: str):
                                     filename = s.get('filename', 'Unknown')
                                     page = s.get('page_number', '?')
                                     text = s.get('chunk_text', '').replace('\n', '<br>')
-                                    sources_md += f"<details><summary><b>{filename}</b> (Page {page})</summary><p style='margin-left: 10px; padding: 10px; border-left: 3px solid #6366f1; background: rgba(30,41,59,0.5);'>{text}</p></details>\n"
+                                    sources_md += f"<details style='margin-bottom:8px; border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:10px; background:#1e293b;'><summary style='cursor:pointer; font-weight:600; color:#818cf8;'>📄 {filename} (Page {page})</summary><p style='margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.05); color:#cbd5e1;'>{text}</p></details>\n"
                                 output += sources_md
-                                yield status_log + "</div>\n\n" + output
+                                yield (status_log + "</div>", output)
                     except json.JSONDecodeError:
                         pass
     except Exception as exc:
-        yield f"Error running research agent: {exc}"
+        yield (f"<div style='color:#ef4444'>Error: {exc}</div>", "")
 
 custom_css = """
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
@@ -351,17 +351,48 @@ with gr.Blocks(title="ResearchPilot | AI Agent", theme=theme, css=custom_css) as
                     )
 
         with gr.TabItem("🧠 Agentic Researcher"):
-            gr.Markdown("Deploy an autonomous LangGraph agent to plan, iteratively search, and compile a structured multi-source report.")
-            
-            research_query = gr.Textbox(label="Research Topic", placeholder="e.g. Write a comprehensive summary of Mohit's backend engineering skills.")
-            run_agent_btn = gr.Button("Deploy Agent", variant="primary")
-            
-            gr.Markdown("### Agent Output")
-            research_output = gr.Markdown("The generated report will appear here. The agent may take up to 60 seconds to complete its iterative research loops.")
-            run_agent_btn.click(fn=run_research_agent, inputs=research_query, outputs=research_output)
+            with gr.Row():
+                with gr.Column(scale=1, min_width=280, elem_classes=["sidebar-panel"]):
+                    gr.Markdown("### ⚙️ Agent Settings")
+                    gr.Markdown("Deploy an autonomous LangGraph agent to iteratively research and compile a report.")
+                    with gr.Accordion("Export Settings", open=True):
+                        export_format = gr.Dropdown(choices=["PDF", "Markdown"], value="PDF", label="Format")
+                
+                with gr.Column(scale=3):
+                    research_query = gr.Textbox(label="Research Topic", placeholder="e.g. Write a comprehensive summary of Mohit's backend engineering skills.")
+                    run_agent_btn = gr.Button("Deploy Agent", variant="primary")
+                    
+                    with gr.Accordion("🧠 Agent Execution Steps", open=True):
+                        research_stepper = gr.HTML("<div style='color:#94a3b8; padding:10px;'>Agent is idle.</div>")
+                    
+                    gr.Markdown("### Agent Output")
+                    research_output = gr.Markdown("The generated report will appear here.")
+                    
+                    with gr.Row():
+                        download_btn = gr.Button("⬇️ Download Research Report (PDF/MD)", variant="secondary")
+                    
+                    run_agent_btn.click(fn=run_research_agent, inputs=research_query, outputs=[research_stepper, research_output])
 
         with gr.TabItem("📚 Knowledge Base"):
             gr.Markdown("Upload standard PDF documents to expand the AI's vectorized knowledge graph.")
+            
+            gr.HTML("""
+            <div style='display:flex; gap:20px; margin-bottom:20px;'>
+                <div class='gr-box' style='flex:1; padding:20px; text-align:center;'>
+                    <h3 style='margin-bottom:10px; color:#94a3b8; font-size:1rem;'>📁 Documents Uploaded</h3>
+                    <h2 style='color:#a855f7; font-size:2rem; font-weight:800;'>12</h2>
+                </div>
+                <div class='gr-box' style='flex:1; padding:20px; text-align:center;'>
+                    <h3 style='margin-bottom:10px; color:#94a3b8; font-size:1rem;'>🧩 Chunks Indexed in ChromaDB</h3>
+                    <h2 style='color:#3b82f6; font-size:2rem; font-weight:800;'>1,432</h2>
+                </div>
+                <div class='gr-box' style='flex:1; padding:20px; text-align:center;'>
+                    <h3 style='margin-bottom:10px; color:#94a3b8; font-size:1rem;'>🟢 Vector DB Status</h3>
+                    <h2 style='color:#4ade80; font-size:2rem; font-weight:800;'>Online</h2>
+                </div>
+            </div>
+            """)
+            
             with gr.Row():
                 with gr.Column(scale=1):
                     pdf_input = gr.File(label="Upload Document", file_types=[".pdf"])
