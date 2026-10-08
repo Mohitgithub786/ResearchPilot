@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import os
 import requests
 from dotenv import load_dotenv
@@ -64,7 +65,7 @@ def list_sessions() -> str:
 def upload_pdf(filepath) -> str:
     import time
     if not filepath:
-        return "Please select a file to upload."
+        return "<div style='color:#ef4444'>Please select a file to upload.</div>"
     try:
         with open(filepath, 'rb') as f:
             files = {'file': (os.path.basename(filepath), f, 'application/pdf')}
@@ -73,7 +74,7 @@ def upload_pdf(filepath) -> str:
             data = response.json()
             task_id = data.get("task_id")
             if not task_id:
-                return "Upload accepted, but no task ID returned."
+                return "<div style='color:#ef4444'>Upload accepted, but no task ID returned.</div>"
             
             # Poll status
             for _ in range(60): # 1 minute timeout
@@ -81,13 +82,14 @@ def upload_pdf(filepath) -> str:
                 status_res.raise_for_status()
                 sdata = status_res.json()
                 if sdata.get("completed"):
-                    return f"Upload successful! File processed successfully."
+                    filename = os.path.basename(filepath)
+                    return f"<div style='padding:15px; border-radius:12px; background:rgba(30,41,59,0.7); border:1px solid rgba(255,255,255,0.1);'><div style='display:flex; justify-content:space-between; align-items:center;'><b>📄 {filename}</b><span style='background:rgba(74,222,128,0.2); color:#4ade80; padding:4px 8px; border-radius:12px; font-size:0.8rem; font-weight:600;'>✅ Indexed</span></div></div>"
                 elif sdata.get("failed"):
-                    return f"Error processing PDF: {sdata.get('error')}"
+                    return f"<div style='color:#ef4444'>Error processing PDF: {sdata.get('error')}</div>"
                 time.sleep(1)
-            return "Upload processing timed out."
+            return "<div style='color:#fbbf24'>Upload processing timed out.</div>"
     except Exception as exc:
-        return f"Error uploading PDF: {exc}"
+        return f"<div style='color:#ef4444'>Error uploading PDF: {exc}</div>"
 
 def list_chunks(doc_id: str) -> str:
     if not doc_id.strip():
@@ -139,7 +141,7 @@ def run_research_agent(query: str):
         )
         response.raise_for_status()
         
-        status_log = "### Agent Thoughts\n"
+        status_log = "<div style='display:flex; flex-direction:column; gap:8px; margin-bottom:20px; padding:15px; background:rgba(30,41,59,0.5); border-radius:12px; border:1px solid rgba(255,255,255,0.05);'><b>⚡ Live Execution:</b>\n"
         output = ""
         import json
         for line in response.iter_lines():
@@ -149,11 +151,14 @@ def run_research_agent(query: str):
                     try:
                         data = json.loads(decoded[6:])
                         if data.get("type") == "status":
-                            status_log += f"* **{data.get('node')}**: {data.get('status')}...\n"
-                            yield status_log + "\n\n" + output
+                            node = data.get('node')
+                            status = data.get('status')
+                            color = "#4ade80" if status == "completed" else "#fbbf24"
+                            status_log += f"<div style='font-size:0.9rem'><span style='color:{color}'>●</span> <b>{node}</b> <i>{status}...</i></div>\n"
+                            yield status_log + "</div>\n\n" + output
                         elif data.get("type") == "token":
                             output += data.get("content", "")
-                            yield status_log + "\n\n### Output\n" + output
+                            yield status_log + "</div>\n\n" + output
                         elif data.get("type") == "sources":
                             sources = data.get("sources", [])
                             if sources:
@@ -164,124 +169,101 @@ def run_research_agent(query: str):
                                     text = s.get('chunk_text', '').replace('\n', '<br>')
                                     sources_md += f"<details><summary><b>{filename}</b> (Page {page})</summary><p style='margin-left: 10px; padding: 10px; border-left: 3px solid #6366f1; background: rgba(30,41,59,0.5);'>{text}</p></details>\n"
                                 output += sources_md
-                                yield status_log + "\n\n### Output\n" + output
+                                yield status_log + "</div>\n\n" + output
                     except json.JSONDecodeError:
                         pass
     except Exception as exc:
         yield f"Error running research agent: {exc}"
 
 custom_css = """
-/* Hide default footer */
-footer {display: none !important;}
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
 
-/* Container formatting */
-.gradio-container {
-    max-width: 1200px !important;
-    margin-top: 2rem !important;
-    margin-bottom: 2rem !important;
-    border-radius: 24px !important;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
-    backdrop-filter: blur(20px) !important;
-    -webkit-backdrop-filter: blur(20px) !important;
-    border: 1px solid rgba(255, 255, 255, 0.05) !important;
-    padding: 2.5rem !important;
+body, .gradio-container {
+    font-family: 'Plus Jakarta Sans', sans-serif !important;
+    background-color: #0b0f19 !important;
 }
 
-/* Stunning Header */
-.main-header {
-    text-align: center; 
-    margin-bottom: 2.5rem; 
-    padding-bottom: 1.5rem;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
+/* Header Styling */
+.header-container {
+    text-align: center;
+    padding: 2.5rem 1rem 1.5rem 1rem;
+    background: radial-gradient(circle at top, rgba(99, 102, 241, 0.15) 0%, transparent 60%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    margin-bottom: 1.5rem;
 }
-.main-header h1 {
-    font-size: 3.5rem; 
-    font-weight: 900; 
-    background: linear-gradient(to right, #38bdf8, #818cf8, #c084fc, #f472b6);
+
+.header-title {
+    font-size: 2.5rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #a855f7 0%, #6366f1 50%, #3b82f6 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     margin-bottom: 0.5rem;
-    letter-spacing: -1.5px;
-    font-family: 'Inter', sans-serif;
 }
-.main-header p {
-    color: #94a3b8; 
-    font-size: 1.25rem;
+
+.header-subtitle {
+    color: #94a3b8;
+    font-size: 1.05rem;
     font-weight: 500;
-    letter-spacing: 0.5px;
 }
 
-/* Animated Primary Buttons */
-button.primary {
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-    box-shadow: 0 4px 15px rgba(129, 140, 248, 0.4) !important;
+/* Tabs Styling */
+.tabs {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+button.tab-nav {
     font-weight: 600 !important;
-    letter-spacing: 0.5px !important;
-    text-transform: uppercase !important;
-    font-size: 0.9rem !important;
-    padding: 0.5rem 1rem !important;
-}
-button.primary:hover {
-    transform: translateY(-2px) scale(1.02) !important;
-    box-shadow: 0 8px 25px rgba(129, 140, 248, 0.6) !important;
+    font-size: 0.95rem !important;
+    padding: 0.75rem 1.25rem !important;
+    border-radius: 8px 8px 0 0 !important;
+    transition: all 0.2s ease !important;
 }
 
-/* Chatbot bubbles */
-.message.user {
-    background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%) !important;
+button.tab-nav.selected {
+    color: #a855f7 !important;
+    border-bottom: 2px solid #a855f7 !important;
+    background: rgba(168, 85, 247, 0.08) !important;
+}
+
+/* Cards & Accordions */
+.gr-box, .gr-panel, .gr-accordion {
+    border-radius: 12px !important;
+    background-color: #111827 !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Primary Action Buttons */
+.gr-button-primary {
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
     border: none !important;
-    color: white !important;
-    box-shadow: 0 4px 10px rgba(59, 130, 246, 0.3) !important;
-}
-.message.bot {
-    background: rgba(30, 41, 59, 0.8) !important;
-    border: 1px solid rgba(255,255,255,0.05) !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    transition: transform 0.15s ease, box-shadow 0.15s ease !important;
 }
 
-/* Textboxes glowing focus */
-textarea:focus, input:focus {
-    box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.5) !important;
-    border-color: #818cf8 !important;
+.gr-button-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px 0 rgba(99, 102, 241, 0.39) !important;
 }
 """
 
 theme = gr.themes.Soft(
     primary_hue="indigo",
-    secondary_hue="slate",
-    neutral_hue="slate",
-    font=[gr.themes.GoogleFont("Inter"), "ui-sans-serif", "system-ui", "sans-serif"],
-).set(
-    body_background_fill="*neutral_950",
-    body_background_fill_dark="*neutral_950",
-    body_text_color="white",
-    body_text_color_dark="white",
-    background_fill_primary="rgba(15, 23, 42, 0.6)",
-    background_fill_primary_dark="rgba(15, 23, 42, 0.6)",
-    background_fill_secondary="rgba(2, 6, 23, 0.4)",
-    background_fill_secondary_dark="rgba(2, 6, 23, 0.4)",
-    border_color_primary="rgba(255,255,255,0.08)",
-    border_color_primary_dark="rgba(255,255,255,0.08)",
-    block_background_fill="rgba(30, 41, 59, 0.3)",
-    block_background_fill_dark="rgba(30, 41, 59, 0.3)",
-    block_border_width="1px",
-    block_border_color="rgba(255,255,255,0.08)",
-    block_radius="xl",
-    button_primary_background_fill="linear-gradient(135deg, #6366f1 0%, #a855f7 100%)",
-    button_primary_background_fill_dark="linear-gradient(135deg, #6366f1 0%, #a855f7 100%)",
-    button_primary_background_fill_hover="linear-gradient(135deg, #4f46e5 0%, #9333ea 100%)",
-    button_primary_border_color="transparent",
-    button_primary_text_color="white",
+    neutral_hue="slate"
 )
+
 with gr.Blocks(title="ResearchPilot | AI Agent", theme=theme, css=custom_css) as demo:
     gr.HTML('''
-    <div class="main-header">
-        <h1>?? ResearchPilot</h1>
-        <p>Enterprise RAG & Autonomous Research Agent</p>
+    <div class="header-container">
+        <div class="header-title">🚀 ResearchPilot</div>
+        <div class="header-subtitle">Enterprise RAG & Autonomous Research Agent</div>
     </div>
     ''')
     
     with gr.Tabs():
-        with gr.TabItem("?? Conversational RAG"):
+        with gr.TabItem("💬 Conversational RAG"):
             gr.Markdown("Have a fluid conversation with your uploaded documents using context retrieval.")
             
             with gr.Accordion("Session Settings (Advanced)", open=False):
@@ -323,7 +305,7 @@ with gr.Blocks(title="ResearchPilot | AI Agent", theme=theme, css=custom_css) as
                 fn=get_bot_response, inputs=[chatbot, chat_session_id], outputs=[chatbot]
             )
 
-        with gr.TabItem("?? Agentic Researcher"):
+        with gr.TabItem("🧠 Agentic Researcher"):
             gr.Markdown("Deploy an autonomous LangGraph agent to plan, iteratively search, and compile a structured multi-source report.")
             
             research_query = gr.Textbox(label="Research Topic", placeholder="e.g. Write a comprehensive summary of Mohit's backend engineering skills.")
@@ -333,13 +315,13 @@ with gr.Blocks(title="ResearchPilot | AI Agent", theme=theme, css=custom_css) as
             research_output = gr.Markdown("The generated report will appear here. The agent may take up to 60 seconds to complete its iterative research loops.")
             run_agent_btn.click(fn=run_research_agent, inputs=research_query, outputs=research_output)
 
-        with gr.TabItem("?? Knowledge Base"):
+        with gr.TabItem("📚 Knowledge Base"):
             gr.Markdown("Upload standard PDF documents to expand the AI's vectorized knowledge graph.")
             with gr.Row():
                 with gr.Column(scale=1):
                     pdf_input = gr.File(label="Upload Document", file_types=[".pdf"])
                     upload_btn = gr.Button("Vectorize Document", variant="primary")
-                    upload_output = gr.Textbox(label="Status", interactive=False, lines=4)
+                    upload_output = gr.HTML(label="Status")
                     upload_btn.click(fn=upload_pdf, inputs=pdf_input, outputs=upload_output)
                 with gr.Column(scale=1):
                     query_input = gr.Textbox(label="Test Vector Retrieval", placeholder="Search the semantic database directly...")
@@ -347,7 +329,7 @@ with gr.Blocks(title="ResearchPilot | AI Agent", theme=theme, css=custom_css) as
                     search_output = gr.Textbox(label="Matched Chunks", interactive=False, lines=8)
                     search_btn.click(fn=retrieve_chunks, inputs=query_input, outputs=search_output)
 
-        with gr.TabItem("?? Developer Tools"):
+        with gr.TabItem("🛠️ Developer Tools"):
             with gr.Row():
                 with gr.Column():
                     gr.Markdown("### Database Entities")
@@ -365,4 +347,5 @@ with gr.Blocks(title="ResearchPilot | AI Agent", theme=theme, css=custom_css) as
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=int(os.getenv("PORT", "7860")))
+
 

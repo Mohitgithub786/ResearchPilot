@@ -7,7 +7,7 @@ import os
 
 def check_health():
     try:
-        req = urllib.request.Request("http://127.0.0.1:8000/health")
+        req = urllib.request.Request("http://127.0.0.1:8085/health")
         with urllib.request.urlopen(req, timeout=2) as response:
             return response.status == 200
     except:
@@ -32,8 +32,8 @@ def main():
     subprocess.run([python_exe, "-m", "pip", "install", "-r", "requirements.txt"], stdout=subprocess.DEVNULL)
     
     # 3. Start Backend
-    print("-> Starting FastAPI backend...")
-    backend = subprocess.Popen([python_exe, "-m", "uvicorn", "app.main:app", "--reload"])
+    print("-> Starting FastAPI backend on port 8085...")
+    backend = subprocess.Popen([python_exe, "-m", "uvicorn", "app.main:app", "--reload", "--port", "8085"])
     
     # 4. Wait for Backend
     print("-> Waiting for backend to become ready (this can take over a minute if loading models for the first time)...", end="")
