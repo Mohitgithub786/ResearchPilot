@@ -22,3 +22,16 @@ class DocumentUploadResponse(BaseModel):
     filename: str
     uploaded_at: datetime
     chunk_count: int
+
+class TaskResponse(BaseModel):
+    task_id: str
+    status: str
+
+class TaskStatusResponse(BaseModel):
+    task_id: str
+    status: str
+    progress: int
+    completed: bool
+    failed: bool
+    error: str | None = None
+

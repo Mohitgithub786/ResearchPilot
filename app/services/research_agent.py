@@ -63,3 +63,35 @@ def run_research(query: str) -> ResearchResponse:
         key_findings=final_state["findings"],
         sources=sources,
     )
+
+import json
+
+async def stream_research(query: str):
+    graph = build_research_graph()
+    initial_state: ResearchState = {
+        "query": query,
+        "plan": [],
+        "current_task": "",
+        "retrieved_chunks": [],
+        "findings": [],
+        "report": "",
+        "sources": [],
+        "retry_count": 0,
+        "average_similarity": 0.0,
+        "status": "planning",
+    }
+    
+    async for event in graph.astream_events(initial_state, version="v1"):
+        kind = event["event"]
+        if kind == "on_chat_model_stream":
+            if "chunk" in event["data"]:
+                yield f"data: {json.dumps({'type': 'token', 'content': str(event['data']['chunk'].content)})}\n\n"
+        elif kind == "on_chain_start":
+            yield f"data: {json.dumps({'type': 'status', 'node': event['name'], 'status': 'started'})}\n\n"
+        elif kind == "on_chain_end":
+            if event['name'] == "retriever":
+                out = event.get('data', {}).get('output', {})
+                if 'sources' in out:
+                    yield f"data: {json.dumps({'type': 'sources', 'sources': out['sources']})}\n\n"
+            yield f"data: {json.dumps({'type': 'status', 'node': event['name'], 'status': 'completed'})}\n\n"
+

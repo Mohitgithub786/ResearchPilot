@@ -189,6 +189,8 @@ def retriever_node(state: ResearchState) -> dict:
                         {
                             "filename": result.source_filename,
                             "page_number": result.page_number,
+                            "chunk_id": result.chunk_id,
+                            "chunk_text": result.chunk_text,
                         }
                     )
     finally:
@@ -364,67 +366,42 @@ def retry_retrieval_node(state: ResearchState) -> dict:
     return {"retry_count": new_count, "status": "retrieving"}
 
 
-def insufficient_context_node(state: ResearchState) -> dict:
-    """
-    Graceful exit when retrieved evidence is not relevant to the query.
+from app.services.tools.web_search import web_search
 
-    Sets a canned report, clears findings, and marks status as
-    'insufficient_context' so the orchestrator returns a clean response
-    without calling the analyzer or report writer.
-    """
-    logger.info(
-        "INSUFFICIENT CONTEXT: avg_similarity=%.4f below threshold=%.2f, "
-        "skipping analysis and report generation",
-        state.get("average_similarity", 0.0),
-        RESEARCH_RELEVANCE_THRESHOLD,
-    )
+def web_search_node(state: ResearchState) -> dict:
+    """Fallback to web search when internal context is insufficient."""
+    logger.info("WEB SEARCH: internal relevance low, falling back to web.")
+    plan = state["plan"]
+    
+    all_web_findings = []
+    for task in plan:
+        results = web_search(task)
+        for res in results:
+            all_web_findings.append(f"- {res.get('title')}: {res.get('body')}")
+            
+    logger.info("WEB SEARCH: retrieved %d web findings", len(all_web_findings))
     return {
-        "report": INSUFFICIENT_CONTEXT_MESSAGE,
-        "findings": [],
-        "sources": [],
-        "status": "insufficient_context",
+        "findings": all_web_findings,
+        "status": "writing"
     }
 
-
-# ---------------------------------------------------------------------------
-# Graph construction
-# ---------------------------------------------------------------------------
-
-
 def build_research_graph():
-    """
-    Build and compile the LangGraph research workflow.
-
-    Graph topology:
-
-        START → planner → retriever → (check_retrieval)
-                              ↑            ↓
-                      retry_retrieval  analyzer → (check_findings)
-                              ↑                        ↓
-                              └────────────────────────┘
-                                                       ↓
-                                                 report_writer → END
-    """
     graph = StateGraph(ResearchState)
 
-    # Register nodes
     graph.add_node("planner", planner_node)
     graph.add_node("retriever", retriever_node)
     graph.add_node("analyzer", analyzer_node)
     graph.add_node("report_writer", report_writer_node)
     graph.add_node("retry_retrieval", retry_retrieval_node)
-    graph.add_node("insufficient_context", insufficient_context_node)
+    graph.add_node("web_search", web_search_node)
 
-    # Entry point
     graph.set_entry_point("planner")
 
-    # Unconditional edges
     graph.add_edge("planner", "retriever")
     graph.add_edge("retry_retrieval", "retriever")
     graph.add_edge("report_writer", END)
-    graph.add_edge("insufficient_context", END)
+    graph.add_edge("web_search", "report_writer")
 
-    # Conditional edges
     graph.add_conditional_edges(
         "retriever",
         check_retrieval,
@@ -432,7 +409,7 @@ def build_research_graph():
             "analyzer": "analyzer",
             "retry_retrieval": "retry_retrieval",
             "report_writer": "report_writer",
-            "insufficient_context": "insufficient_context",
+            "insufficient_context": "web_search",
         },
     )
     graph.add_conditional_edges(

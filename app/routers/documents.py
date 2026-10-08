@@ -25,21 +25,71 @@ def create_document(payload: DocumentCreate, db: Session = Depends(get_db)) -> D
     return document
 
 
-@router.post("/upload", response_model=DocumentUploadResponse, status_code=201)
+from fastapi import BackgroundTasks
+from app.schemas.document import TaskResponse, TaskStatusResponse
+import uuid
+import shutil
+import os
+
+TASK_STATUS = {}
+
+def async_ingest_pdf_task(task_id: str, file_path: str, filename: str):
+    from app.database.session import SessionLocal
+    db = SessionLocal()
+    try:
+        TASK_STATUS[task_id] = {"status": "processing", "progress": 10, "completed": False, "failed": False}
+        # Assuming ingest_pdf can take a file path instead of UploadFile, or we construct a dummy
+        # Wait, ingest_pdf takes (db, file: UploadFile). I'll need to mock UploadFile or modify ingest_pdf
+        # Since I cannot easily modify ingest_pdf without seeing it, I'll pass a mock object
+        class MockUploadFile:
+            def __init__(self, filename, file):
+                self.filename = filename
+                self.file = file
+        with open(file_path, "rb") as f:
+            mock_file = MockUploadFile(filename, f)
+            document, chunk_count = ingest_pdf(db, mock_file)
+        TASK_STATUS[task_id] = {"status": "completed", "progress": 100, "completed": True, "failed": False}
+    except Exception as e:
+        TASK_STATUS[task_id] = {"status": "failed", "progress": 0, "completed": False, "failed": True, "error": str(e)}
+    finally:
+        db.close()
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+@router.post("/upload", response_model=TaskResponse, status_code=202)
 def upload_document(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-) -> DocumentUploadResponse:
+) -> TaskResponse:
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+        
+    task_id = str(uuid.uuid4())
+    os.makedirs("data/uploads", exist_ok=True)
+    temp_path = f"data/uploads/temp_{task_id}_{file.filename}"
+    with open(temp_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+        
+    TASK_STATUS[task_id] = {"status": "queued", "progress": 0, "completed": False, "failed": False}
+    background_tasks.add_task(async_ingest_pdf_task, task_id, temp_path, file.filename)
+    
+    return TaskResponse(task_id=task_id, status="queued")
 
-    document, chunk_count = ingest_pdf(db, file)
-    return DocumentUploadResponse(
-        id=document.id,
-        filename=document.filename,
-        uploaded_at=document.uploaded_at,
-        chunk_count=chunk_count,
+@router.get("/status/{task_id}", response_model=TaskStatusResponse)
+def get_task_status(task_id: str):
+    if task_id not in TASK_STATUS:
+        raise HTTPException(status_code=404, detail="Task not found")
+    status = TASK_STATUS[task_id]
+    return TaskStatusResponse(
+        task_id=task_id,
+        status=status.get("status"),
+        progress=status.get("progress"),
+        completed=status.get("completed"),
+        failed=status.get("failed"),
+        error=status.get("error")
     )
+
 
 
 @router.get("", response_model=list[DocumentResponse])

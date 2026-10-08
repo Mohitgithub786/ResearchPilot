@@ -10,6 +10,8 @@ class ResearchRequest(BaseModel):
 class ResearchSourceReference(BaseModel):
     filename: str
     page_number: int | None = None
+    chunk_text: str | None = None
+    chunk_id: int | None = None
 
 
 class ResearchResponse(BaseModel):

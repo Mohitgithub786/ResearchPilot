@@ -62,6 +62,7 @@ def list_sessions() -> str:
         return f"Error listing sessions: {exc}"
 
 def upload_pdf(filepath) -> str:
+    import time
     if not filepath:
         return "Please select a file to upload."
     try:
@@ -70,7 +71,21 @@ def upload_pdf(filepath) -> str:
             response = requests.post(f"{FASTAPI_BASE_URL}/documents/upload", files=files, timeout=30)
             response.raise_for_status()
             data = response.json()
-            return f"Upload successful!\nDocument ID: {data['id']}\nFilename: {data['filename']}\nChunks Created: {data['chunk_count']}"
+            task_id = data.get("task_id")
+            if not task_id:
+                return "Upload accepted, but no task ID returned."
+            
+            # Poll status
+            for _ in range(60): # 1 minute timeout
+                status_res = requests.get(f"{FASTAPI_BASE_URL}/documents/status/{task_id}")
+                status_res.raise_for_status()
+                sdata = status_res.json()
+                if sdata.get("completed"):
+                    return f"Upload successful! File processed successfully."
+                elif sdata.get("failed"):
+                    return f"Error processing PDF: {sdata.get('error')}"
+                time.sleep(1)
+            return "Upload processing timed out."
     except Exception as exc:
         return f"Error uploading PDF: {exc}"
 
@@ -111,34 +126,49 @@ def retrieve_chunks(query: str) -> str:
     except Exception as exc:
         return f"Error retrieving chunks: {exc}"
 
-def run_research_agent(query: str) -> str:
+def run_research_agent(query: str):
     if not query.strip():
-        return "Please enter a research query."
+        yield "Please enter a research query."
+        return
     try:
-        response = requests.post(
-            f"{FASTAPI_BASE_URL}/research", 
-            json={"query": query.strip()}, 
+        response = requests.get(
+            f"{FASTAPI_BASE_URL}/stream", 
+            params={"query": query.strip()}, 
+            stream=True,
             timeout=120
         )
         response.raise_for_status()
-        data = response.json()
         
-        summary = data.get("summary", "")
-        key_findings = data.get("key_findings", [])
-        sources = data.get("sources", [])
-        
-        result = f"### Summary\n{summary}\n\n### Key Findings\n"
-        for finding in key_findings:
-            result += f"- {finding}\n"
-            
-        if sources:
-            result += "\n### Sources\n"
-            for s in sources:
-                result += f"- {s.get('filename', 'Unknown')} (Page {s.get('page_number', '?')})\n"
-                
-        return result
+        status_log = "### Agent Thoughts\n"
+        output = ""
+        import json
+        for line in response.iter_lines():
+            if line:
+                decoded = line.decode('utf-8')
+                if decoded.startswith("data: "):
+                    try:
+                        data = json.loads(decoded[6:])
+                        if data.get("type") == "status":
+                            status_log += f"* **{data.get('node')}**: {data.get('status')}...\n"
+                            yield status_log + "\n\n" + output
+                        elif data.get("type") == "token":
+                            output += data.get("content", "")
+                            yield status_log + "\n\n### Output\n" + output
+                        elif data.get("type") == "sources":
+                            sources = data.get("sources", [])
+                            if sources:
+                                sources_md = "\n\n### Interactive Citations\n"
+                                for s in sources:
+                                    filename = s.get('filename', 'Unknown')
+                                    page = s.get('page_number', '?')
+                                    text = s.get('chunk_text', '').replace('\n', '<br>')
+                                    sources_md += f"<details><summary><b>{filename}</b> (Page {page})</summary><p style='margin-left: 10px; padding: 10px; border-left: 3px solid #6366f1; background: rgba(30,41,59,0.5);'>{text}</p></details>\n"
+                                output += sources_md
+                                yield status_log + "\n\n### Output\n" + output
+                    except json.JSONDecodeError:
+                        pass
     except Exception as exc:
-        return f"Error running research agent: {exc}"
+        yield f"Error running research agent: {exc}"
 
 custom_css = """
 /* Hide default footer */
