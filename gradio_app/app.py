@@ -140,146 +140,114 @@ def run_research_agent(query: str) -> str:
     except Exception as exc:
         return f"Error running research agent: {exc}"
 
-with gr.Blocks(title="ResearchPilot") as demo:
-    gr.Markdown("# ResearchPilot")
+custom_css = """
+footer {display: none !important;}
+.gradio-container {max-width: 1000px !important;}
+.main-header {text-align: center; margin-bottom: 1rem; margin-top: 1rem;}
+.main-header h1 {font-size: 2.8rem; color: #0f172a; font-weight: 800; margin-bottom: 0.2rem;}
+.main-header p {color: #475569; font-size: 1.1rem;}
+"""
+
+theme = gr.themes.Soft(
+    primary_hue="indigo",
+    secondary_hue="slate",
+    font=[gr.themes.GoogleFont("Inter"), "ui-sans-serif", "system-ui", "sans-serif"],
+).set(
+    button_primary_background_fill="*primary_600",
+    button_primary_background_fill_hover="*primary_700",
+    block_radius="lg",
+)
+
+with gr.Blocks(title="ResearchPilot | AI Agent", theme=theme, css=custom_css) as demo:
+    gr.HTML('''
+    <div class="main-header">
+        <h1>?? ResearchPilot</h1>
+        <p>Enterprise RAG & Autonomous Research Agent</p>
+    </div>
+    ''')
     
-    with gr.Tab("Phase 2: Test Connection"):
-        gr.Markdown("Test the connection to the FastAPI backend.")
-        name_input = gr.Textbox(label="Enter your name")
-        test_button = gr.Button("Test FastAPI Connection")
-        test_output = gr.Textbox(label="Response", interactive=False)
-        test_button.click(fn=test_fastapi_connection, inputs=name_input, outputs=test_output)
-        
-    with gr.Tab("Phase 3: Persistence"):
-        gr.Markdown("Test the SQLite persistence for Documents and Chat Sessions.")
-        
-        with gr.Row():
-            with gr.Column():
-                gr.Markdown("### Documents")
-                doc_filename = gr.Textbox(label="Document Filename")
-                create_doc_btn = gr.Button("Create Document Record")
-                list_docs_btn = gr.Button("List All Documents")
-                doc_output = gr.Textbox(label="Document Output", interactive=False, lines=5)
-                
-                create_doc_btn.click(fn=create_document, inputs=doc_filename, outputs=doc_output)
-                list_docs_btn.click(fn=list_documents, inputs=[], outputs=doc_output)
-                
-            with gr.Column():
-                gr.Markdown("### Sessions")
-                create_session_btn = gr.Button("Create Chat Session")
-                list_sessions_btn = gr.Button("List All Sessions")
-                session_output = gr.Textbox(label="Session Output", interactive=False, lines=5)
-                
-                create_session_btn.click(fn=create_session, inputs=[], outputs=session_output)
-                list_sessions_btn.click(fn=list_sessions, inputs=[], outputs=session_output)
-
-    with gr.Tab("Phase 4: Ingestion"):
-        gr.Markdown("Upload a real PDF file. The backend will parse it, chunk the text, and store the chunks in the database.")
-        
-        with gr.Row():
-            with gr.Column():
-                gr.Markdown("### Upload PDF")
-                pdf_input = gr.File(label="Select PDF File", file_types=[".pdf"])
-                upload_btn = gr.Button("Upload & Process PDF")
-                upload_output = gr.Textbox(label="Upload Output", interactive=False, lines=4)
-                
-                upload_btn.click(fn=upload_pdf, inputs=pdf_input, outputs=upload_output)
-                
-            with gr.Column():
-                gr.Markdown("### View Chunks")
-                chunk_doc_id = gr.Textbox(label="Enter Document ID (e.g. 1)")
-                view_chunks_btn = gr.Button("View Document Chunks")
-                chunks_output = gr.Textbox(label="Chunks Preview", interactive=False, lines=10)
-                
-                view_chunks_btn.click(fn=list_chunks, inputs=chunk_doc_id, outputs=chunks_output)
-
-    with gr.Tab("Phase 5: Retrieval"):
-        gr.Markdown("Search across all embedded document chunks using ChromaDB vector similarity.")
-        
-        with gr.Row():
-            with gr.Column():
-                query_input = gr.Textbox(label="Search Query", placeholder="e.g. What is positional encoding?")
-                search_btn = gr.Button("Search Vectors")
-            with gr.Column():
-                search_output = gr.Textbox(label="Top Matching Chunks", interactive=False, lines=12)
-                
-        search_btn.click(fn=retrieve_chunks, inputs=query_input, outputs=search_output)
-
-    with gr.Tab("Phase 6 & 7: Conversational RAG"):
-        gr.Markdown("Chat with your uploaded documents using context retrieval and session-based memory.")
-        
-        chat_session_id = gr.Textbox(label="Session ID (Create one in Phase 3 first!)", value="1")
-        chatbot = gr.Chatbot(label="Research Assistant")
-        
-        with gr.Row():
-            chat_input = gr.Textbox(label="Your Message", placeholder="Type your question here...")
-            chat_submit = gr.Button("Send")
+    with gr.Tabs():
+        with gr.TabItem("?? Conversational RAG"):
+            gr.Markdown("Have a fluid conversation with your uploaded documents using context retrieval.")
             
-        def submit_message(msg, history):
-            history.append({"role": "user", "content": msg})
-            return "", history
+            with gr.Accordion("Session Settings (Advanced)", open=False):
+                chat_session_id = gr.Textbox(label="Active Session ID", value="1", info="Change this to chat in a different context.")
+                
+            chatbot = gr.Chatbot(label="ResearchPilot Assistant", height=450)
             
-        def get_bot_response(history, sid):
-            if not history:
+            with gr.Row():
+                chat_input = gr.Textbox(label="", placeholder="Type your question here and hit Enter...", scale=8)
+                chat_submit = gr.Button("Send", variant="primary", scale=1)
+                
+            def submit_message(msg, history):
+                history.append({"role": "user", "content": msg})
+                return "", history
+                
+            def get_bot_response(history, sid):
+                if not history: return history
+                user_msg = history[-1]["content"] if isinstance(history[-1], dict) else (history[-1].content if hasattr(history[-1], "content") else history[-1][0])
+                if not sid.strip() or not sid.strip().isdigit():
+                    history.append({"role": "assistant", "content": "Please enter a valid numeric Session ID in Settings."})
+                    return history
+                try:
+                    response = requests.post(f"{FASTAPI_BASE_URL}/chat", json={"session_id": int(sid.strip()), "question": user_msg}, timeout=60)
+                    response.raise_for_status()
+                    data = response.json()
+                    ans = data.get("answer", "No answer provided.")
+                    sources = data.get("sources", [])
+                    if sources:
+                        ans += "\n\n**Sources:**\n" + "\n".join([f"- {s.get('filename', 'Unknown')} (Page {s.get('page_number', '?')})" for s in sources])
+                    history.append({"role": "assistant", "content": ans})
+                except Exception as exc:
+                    history.append({"role": "assistant", "content": f"Error: {exc}"})
                 return history
+
+            chat_submit.click(fn=submit_message, inputs=[chat_input, chatbot], outputs=[chat_input, chatbot]).then(
+                fn=get_bot_response, inputs=[chatbot, chat_session_id], outputs=[chatbot]
+            )
+            chat_input.submit(fn=submit_message, inputs=[chat_input, chatbot], outputs=[chat_input, chatbot]).then(
+                fn=get_bot_response, inputs=[chatbot, chat_session_id], outputs=[chatbot]
+            )
+
+        with gr.TabItem("?? Agentic Researcher"):
+            gr.Markdown("Deploy an autonomous LangGraph agent to plan, iteratively search, and compile a structured multi-source report.")
             
-            user_msg = history[-1]["content"]
+            research_query = gr.Textbox(label="Research Topic", placeholder="e.g. Write a comprehensive summary of Mohit's backend engineering skills.")
+            run_agent_btn = gr.Button("Deploy Agent", variant="primary")
             
-            if not sid.strip() or not sid.strip().isdigit():
-                history.append({"role": "assistant", "content": "Please enter a valid numeric Session ID."})
-                return history
-                
-            try:
-                response = requests.post(
-                    f"{FASTAPI_BASE_URL}/chat", 
-                    json={"session_id": int(sid.strip()), "question": user_msg}, 
-                    timeout=60
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                ans = data.get("answer", "No answer provided.")
-                sources = data.get("sources", [])
-                
-                if sources:
-                    src_text = "\n\n**Sources:**\n" + "\n".join([f"- {s.get('filename', 'Unknown')} (Page {s.get('page_number', '?')})" for s in sources])
-                    ans += src_text
-                    
-                history.append({"role": "assistant", "content": ans})
-            except Exception as exc:
-                history.append({"role": "assistant", "content": f"Error: {exc}"})
-            
-            return history
+            gr.Markdown("### Agent Output")
+            research_output = gr.Markdown("The generated report will appear here. The agent may take up to 60 seconds to complete its iterative research loops.")
+            run_agent_btn.click(fn=run_research_agent, inputs=research_query, outputs=research_output)
 
-        chat_submit.click(fn=submit_message, inputs=[chat_input, chatbot], outputs=[chat_input, chatbot]).then(
-            fn=get_bot_response, inputs=[chatbot, chat_session_id], outputs=[chatbot]
-        )
-        chat_input.submit(fn=submit_message, inputs=[chat_input, chatbot], outputs=[chat_input, chatbot]).then(
-            fn=get_bot_response, inputs=[chatbot, chat_session_id], outputs=[chatbot]
-        )
+        with gr.TabItem("?? Knowledge Base"):
+            gr.Markdown("Upload standard PDF documents to expand the AI's vectorized knowledge graph.")
+            with gr.Row():
+                with gr.Column(scale=1):
+                    pdf_input = gr.File(label="Upload Document", file_types=[".pdf"])
+                    upload_btn = gr.Button("Vectorize Document", variant="primary")
+                    upload_output = gr.Textbox(label="Status", interactive=False, lines=4)
+                    upload_btn.click(fn=upload_pdf, inputs=pdf_input, outputs=upload_output)
+                with gr.Column(scale=1):
+                    query_input = gr.Textbox(label="Test Vector Retrieval", placeholder="Search the semantic database directly...")
+                    search_btn = gr.Button("Search Vectors")
+                    search_output = gr.Textbox(label="Matched Chunks", interactive=False, lines=8)
+                    search_btn.click(fn=retrieve_chunks, inputs=query_input, outputs=search_output)
 
-    with gr.Tab("Phase 8: Agentic Research"):
-        gr.Markdown("Run a multi-step LangGraph agent to plan, retrieve, and write a structured research report.")
-        
-        with gr.Row():
-            with gr.Column():
-                research_query = gr.Textbox(label="Research Topic", placeholder="e.g. Compare positional encoding methods.")
-                run_agent_btn = gr.Button("Run Agentic Research")
-            with gr.Column():
-                research_output = gr.Markdown("Report will appear here...")
-                
-        run_agent_btn.click(fn=run_research_agent, inputs=research_query, outputs=research_output)
-
-    with gr.Tab("Phase 9: Observability"):
-        gr.Markdown("### Logging & Streaming")
-        gr.Markdown("Phase 9 focuses on backend observability. The FastAPI server uses structured logging to track agent steps, database queries, and vector searches. Check your terminal running `start.bat` to see these detailed logs in real-time while you use the other tabs!")
-
-    with gr.Tab("Phase 10: Deployment"):
-        gr.Markdown("### Dockerization & CI/CD")
-        gr.Markdown("The project is now fully production-ready (Final Phase).")
-        gr.Markdown("To run this in a production environment (like AWS or Render), you can use the included Docker setup:")
-        gr.Code("docker-compose up --build", language="shell")
-        gr.Markdown("This spins up the FastAPI backend and ChromaDB containerized environments seamlessly.")
+        with gr.TabItem("?? Developer Tools"):
+            with gr.Row():
+                with gr.Column():
+                    gr.Markdown("### Database Entities")
+                    list_docs_btn = gr.Button("List Indexed Documents")
+                    list_sessions_btn = gr.Button("List Chat Sessions")
+                    dev_output = gr.Textbox(label="Database Output", interactive=False, lines=10)
+                    list_docs_btn.click(fn=list_documents, inputs=[], outputs=dev_output)
+                    list_sessions_btn.click(fn=list_sessions, inputs=[], outputs=dev_output)
+                with gr.Column():
+                    gr.Markdown("### Diagnostics")
+                    name_input = gr.Textbox(label="Ping API Server (Enter name)")
+                    test_button = gr.Button("Send Ping")
+                    test_output = gr.Textbox(label="Response", interactive=False)
+                    test_button.click(fn=test_fastapi_connection, inputs=name_input, outputs=test_output)
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=int(os.getenv("PORT", "7860")))
