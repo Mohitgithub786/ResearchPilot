@@ -141,23 +141,107 @@ def run_research_agent(query: str) -> str:
         return f"Error running research agent: {exc}"
 
 custom_css = """
+/* Hide default footer */
 footer {display: none !important;}
-.gradio-container {max-width: 1000px !important;}
-.main-header {text-align: center; margin-bottom: 1rem; margin-top: 1rem;}
-.main-header h1 {font-size: 2.8rem; color: #0f172a; font-weight: 800; margin-bottom: 0.2rem;}
-.main-header p {color: #475569; font-size: 1.1rem;}
+
+/* Container formatting */
+.gradio-container {
+    max-width: 1200px !important;
+    margin-top: 2rem !important;
+    margin-bottom: 2rem !important;
+    border-radius: 24px !important;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    padding: 2.5rem !important;
+}
+
+/* Stunning Header */
+.main-header {
+    text-align: center; 
+    margin-bottom: 2.5rem; 
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.main-header h1 {
+    font-size: 3.5rem; 
+    font-weight: 900; 
+    background: linear-gradient(to right, #38bdf8, #818cf8, #c084fc, #f472b6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 0.5rem;
+    letter-spacing: -1.5px;
+    font-family: 'Inter', sans-serif;
+}
+.main-header p {
+    color: #94a3b8; 
+    font-size: 1.25rem;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+}
+
+/* Animated Primary Buttons */
+button.primary {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    box-shadow: 0 4px 15px rgba(129, 140, 248, 0.4) !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.5px !important;
+    text-transform: uppercase !important;
+    font-size: 0.9rem !important;
+    padding: 0.5rem 1rem !important;
+}
+button.primary:hover {
+    transform: translateY(-2px) scale(1.02) !important;
+    box-shadow: 0 8px 25px rgba(129, 140, 248, 0.6) !important;
+}
+
+/* Chatbot bubbles */
+.message.user {
+    background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%) !important;
+    border: none !important;
+    color: white !important;
+    box-shadow: 0 4px 10px rgba(59, 130, 246, 0.3) !important;
+}
+.message.bot {
+    background: rgba(30, 41, 59, 0.8) !important;
+    border: 1px solid rgba(255,255,255,0.05) !important;
+}
+
+/* Textboxes glowing focus */
+textarea:focus, input:focus {
+    box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.5) !important;
+    border-color: #818cf8 !important;
+}
 """
 
 theme = gr.themes.Soft(
     primary_hue="indigo",
     secondary_hue="slate",
+    neutral_hue="slate",
     font=[gr.themes.GoogleFont("Inter"), "ui-sans-serif", "system-ui", "sans-serif"],
 ).set(
-    button_primary_background_fill="*primary_600",
-    button_primary_background_fill_hover="*primary_700",
-    block_radius="lg",
+    body_background_fill="*neutral_950",
+    body_background_fill_dark="*neutral_950",
+    body_text_color="white",
+    body_text_color_dark="white",
+    background_fill_primary="rgba(15, 23, 42, 0.6)",
+    background_fill_primary_dark="rgba(15, 23, 42, 0.6)",
+    background_fill_secondary="rgba(2, 6, 23, 0.4)",
+    background_fill_secondary_dark="rgba(2, 6, 23, 0.4)",
+    border_color_primary="rgba(255,255,255,0.08)",
+    border_color_primary_dark="rgba(255,255,255,0.08)",
+    block_background_fill="rgba(30, 41, 59, 0.3)",
+    block_background_fill_dark="rgba(30, 41, 59, 0.3)",
+    block_border_width="1px",
+    block_border_color="rgba(255,255,255,0.08)",
+    block_radius="xl",
+    button_primary_background_fill="linear-gradient(135deg, #6366f1 0%, #a855f7 100%)",
+    button_primary_background_fill_dark="linear-gradient(135deg, #6366f1 0%, #a855f7 100%)",
+    button_primary_background_fill_hover="linear-gradient(135deg, #4f46e5 0%, #9333ea 100%)",
+    button_primary_border_color="transparent",
+    button_primary_text_color="white",
 )
-
 with gr.Blocks(title="ResearchPilot | AI Agent", theme=theme, css=custom_css) as demo:
     gr.HTML('''
     <div class="main-header">
@@ -251,3 +335,4 @@ with gr.Blocks(title="ResearchPilot | AI Agent", theme=theme, css=custom_css) as
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=int(os.getenv("PORT", "7860")))
+
