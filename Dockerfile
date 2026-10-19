@@ -16,6 +16,8 @@ COPY . .
 ENV HOST=0.0.0.0
 ENV PORT=7860
 ENV FASTAPI_BASE_URL=http://127.0.0.1:7860
+ENV EMBEDDING_PROVIDER=openai
+ENV GROQ_MODEL=openai/gpt-oss-120b
 
 # Expose port for Hugging Face / Render
 EXPOSE 7860
