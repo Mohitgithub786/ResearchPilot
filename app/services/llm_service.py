@@ -50,11 +50,26 @@ class GroqLLMService(LLMService):
     def __init__(self, model: str, api_key: str | None) -> None:
         from langchain_groq import ChatGroq
 
+        self.model = model
+        self.api_key = api_key
         self._llm = ChatGroq(model=model, api_key=api_key, temperature=0)
 
     def generate(self, prompt: str) -> str:
-        response = self._llm.invoke(prompt)
-        return str(response.content).strip()
+        try:
+            response = self._llm.invoke(prompt)
+            return str(response.content).strip()
+        except Exception as exc:
+            logger.warning("Groq call failed (%s). Attempting fallback to OpenAI...", exc)
+            if OPENAI_API_KEY:
+                try:
+                    from langchain_openai import ChatOpenAI
+                    backup_llm = ChatOpenAI(model=OPENAI_LLM_MODEL, api_key=OPENAI_API_KEY, temperature=0)
+                    backup_response = backup_llm.invoke(prompt)
+                    logger.info("OpenAI fallback successful.")
+                    return str(backup_response.content).strip()
+                except Exception as backup_exc:
+                    logger.error("OpenAI fallback also failed: %s", backup_exc)
+            raise exc
 
 
 class TestLLMService(LLMService):

@@ -57,8 +57,8 @@ def main():
     time.sleep(3)
     
     # 6. Open Browser
-    print("-> Opening UI in your default browser...")
-    webbrowser.open("http://127.0.0.1:7860")
+    print("-> Opening UI in your default browser at http://127.0.0.1:8085/ ...")
+    webbrowser.open("http://127.0.0.1:8085/")
     
     print("\n=== ResearchPilot is running! ===")
     print("Press Ctrl+C in this terminal to shut down both the backend and frontend.\n")

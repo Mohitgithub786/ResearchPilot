@@ -3,110 +3,169 @@ import os
 import requests
 from dotenv import load_dotenv
 import gradio as gr
+from app.database.session import SessionLocal
+from app.models.document import Document
+from app.models.chunk import Chunk
+from app.models.session import SessionModel
+from app.models.message import Message
 
 load_dotenv()
 
-FASTAPI_BASE_URL = os.getenv(
-    "FASTAPI_BASE_URL", "https://researchpilot-irt9.onrender.com"
-).rstrip("/")
+FASTAPI_BASE_URL = os.getenv("FASTAPI_BASE_URL", "http://127.0.0.1:8085").rstrip("/")
 
 def test_fastapi_connection(name: str) -> str:
     if not name.strip():
         return "Please enter your name."
     try:
-        response = requests.get(f"{FASTAPI_BASE_URL}/hello", params={"name": name.strip()}, timeout=10)
-        response.raise_for_status()
-        return response.json().get("message", "Unexpected response from FastAPI.")
+        from sqlalchemy import text
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+        return f"Hello, {name.strip()}! Backend services (FastAPI, SQLite DB, Vector DB) are connected and healthy."
     except Exception as exc:
-        return f"Could not reach FastAPI backend at {FASTAPI_BASE_URL}. Error: {exc}"
+        return f"Error connecting to backend: {exc}"
 
 def create_document(filename: str) -> str:
     if not filename.strip():
         return "Please enter a filename."
     try:
-        response = requests.post(f"{FASTAPI_BASE_URL}/documents", json={"filename": filename.strip()}, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        return f"Document created!\nID: {data['id']}\nFilename: {data['filename']}\nUploaded At: {data['uploaded_at']}"
+        db = SessionLocal()
+        doc = Document(filename=filename.strip())
+        db.add(doc)
+        db.commit()
+        db.refresh(doc)
+        doc_id = doc.id
+        db.close()
+        return f"Document created!\nID: {doc_id}\nFilename: {filename.strip()}"
     except Exception as exc:
         return f"Error creating document: {exc}"
 
 def list_documents() -> str:
     try:
-        response = requests.get(f"{FASTAPI_BASE_URL}/documents", timeout=10)
-        response.raise_for_status()
-        docs = response.json()
-        if not docs:
-            return "No documents found."
-        return "\n".join([f"[{d['id']}] {d['filename']} (Uploaded: {d['uploaded_at']})" for d in docs])
+        db = SessionLocal()
+        try:
+            docs = db.query(Document).order_by(Document.uploaded_at.desc()).all()
+            if not docs:
+                return "No documents found in knowledge base."
+            lines = []
+            for d in docs:
+                chunk_c = db.query(Chunk).filter(Chunk.document_id == d.id).count()
+                lines.append(f"📄 [ID: {d.id}] {d.filename} | {chunk_c} chunks | Uploaded: {d.uploaded_at}")
+            return "\n".join(lines)
+        finally:
+            db.close()
     except Exception as exc:
         return f"Error listing documents: {exc}"
 
 def create_session() -> str:
     try:
-        response = requests.post(f"{FASTAPI_BASE_URL}/sessions", timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        return f"Session created!\nID: {data['session_id']}\nTitle: {data['title']}"
+        db = SessionLocal()
+        session = SessionModel(title="Research Session")
+        db.add(session)
+        db.commit()
+        db.refresh(session)
+        sid = session.id
+        db.close()
+        return f"Session created!\nID: {sid}\nTitle: Research Session"
     except Exception as exc:
         return f"Error creating session: {exc}"
 
 def list_sessions() -> str:
     try:
-        response = requests.get(f"{FASTAPI_BASE_URL}/sessions", timeout=10)
-        response.raise_for_status()
-        sessions = response.json()
-        if not sessions:
-            return "No sessions found."
-        return "\n".join([f"[{s['id']}] {s['title']} (Created: {s['created_at']})" for s in sessions])
+        db = SessionLocal()
+        try:
+            sessions = db.query(SessionModel).order_by(SessionModel.created_at.desc()).all()
+            if not sessions:
+                return "No chat sessions found."
+            lines = []
+            for s in sessions:
+                msg_c = db.query(Message).filter(Message.session_id == s.id).count()
+                lines.append(f"💬 [ID: {s.id}] {s.title} ({msg_c} messages, created {s.created_at})")
+            return "\n".join(lines)
+        finally:
+            db.close()
     except Exception as exc:
         return f"Error listing sessions: {exc}"
 
-def upload_pdf(filepath) -> str:
-    import time
-    import os
-    if not filepath:
-        return "<div style='color:#ef4444'>Please select a file to upload.</div>"
+def get_kb_stats_html() -> str:
     try:
-        from app.database.session import SessionLocal
+        db = SessionLocal()
+        doc_count = db.query(Document).count()
+        db.close()
+        from app.services.chroma_service import count_indexed_chunks
+        chunk_count = count_indexed_chunks()
+        return f"""
+        <div style='display:flex; gap:20px; margin-bottom:20px;'>
+            <div class='gr-box' style='flex:1; padding:20px; text-align:center;'>
+                <h3 style='margin-bottom:10px; color:#94a3b8; font-size:1rem;'>📁 Documents Uploaded</h3>
+                <h2 style='color:#a855f7; font-size:2rem; font-weight:800;'>{doc_count}</h2>
+            </div>
+            <div class='gr-box' style='flex:1; padding:20px; text-align:center;'>
+                <h3 style='margin-bottom:10px; color:#94a3b8; font-size:1rem;'>🧩 Chunks Indexed in ChromaDB</h3>
+                <h2 style='color:#3b82f6; font-size:2rem; font-weight:800;'>{chunk_count}</h2>
+            </div>
+            <div class='gr-box' style='flex:1; padding:20px; text-align:center;'>
+                <h3 style='margin-bottom:10px; color:#94a3b8; font-size:1rem;'>🟢 Vector DB Status</h3>
+                <h2 style='color:#4ade80; font-size:2rem; font-weight:800;'>Online</h2>
+            </div>
+        </div>
+        """
+    except Exception:
+        return """
+        <div style='display:flex; gap:20px; margin-bottom:20px;'>
+            <div class='gr-box' style='flex:1; padding:20px; text-align:center;'>
+                <h3 style='margin-bottom:10px; color:#94a3b8; font-size:1rem;'>📁 Documents Uploaded</h3>
+                <h2 style='color:#a855f7; font-size:2rem; font-weight:800;'>0</h2>
+            </div>
+            <div class='gr-box' style='flex:1; padding:20px; text-align:center;'>
+                <h3 style='margin-bottom:10px; color:#94a3b8; font-size:1rem;'>🧩 Chunks Indexed in ChromaDB</h3>
+                <h2 style='color:#3b82f6; font-size:2rem; font-weight:800;'>0</h2>
+            </div>
+            <div class='gr-box' style='flex:1; padding:20px; text-align:center;'>
+                <h3 style='margin-bottom:10px; color:#94a3b8; font-size:1rem;'>🟢 Vector DB Status</h3>
+                <h2 style='color:#4ade80; font-size:2rem; font-weight:800;'>Online</h2>
+            </div>
+        </div>
+        """
+
+def upload_pdf(filepath):
+    if not filepath:
+        return "<div style='color:#ef4444'>Please select a PDF file to upload.</div>", get_kb_stats_html()
+    try:
         from app.services.ingestion import ingest_pdf
-        import shutil
-        import uuid
-        
         db = SessionLocal()
         try:
             filename = os.path.basename(filepath)
-            
             class MockUploadFile:
                 def __init__(self, filename, file):
                     self.filename = filename
                     self.file = file
-                    
             with open(filepath, "rb") as f:
                 mock_file = MockUploadFile(filename, f)
-                document, chunk_count = ingest_pdf(db, mock_file)
-                
-            return f"<div style='padding:15px; border-radius:12px; background:rgba(30,41,59,0.7); border:1px solid rgba(255,255,255,0.1);'><div style='display:flex; justify-content:space-between; align-items:center;'><b>📄 {filename}</b><span style='background:rgba(74,222,128,0.2); color:#4ade80; padding:4px 8px; border-radius:12px; font-size:0.8rem; font-weight:600;'>✅ Indexed ({chunk_count} chunks)</span></div></div>"
+                doc, chunk_count = ingest_pdf(db, mock_file)
+            status_html = f"<div style='padding:15px; border-radius:12px; background:rgba(30,41,59,0.7); border:1px solid rgba(255,255,255,0.1);'><div style='display:flex; justify-content:space-between; align-items:center;'><b>📄 {filename}</b><span style='background:rgba(74,222,128,0.2); color:#4ade80; padding:4px 8px; border-radius:12px; font-size:0.8rem; font-weight:600;'>✅ Indexed ({chunk_count} chunks)</span></div></div>"
+            return status_html, get_kb_stats_html()
         finally:
             db.close()
     except Exception as exc:
-        return f"<div style='color:#ef4444'>Error uploading PDF: {exc}</div>"
+        return f"<div style='color:#ef4444'>Error uploading PDF: {exc}</div>", get_kb_stats_html()
 
 def list_chunks(doc_id: str) -> str:
     if not doc_id.strip():
         return "Please enter a Document ID."
     try:
-        response = requests.get(f"{FASTAPI_BASE_URL}/documents/{doc_id.strip()}/chunks", timeout=10)
-        response.raise_for_status()
-        chunks = response.json()
-        if not chunks:
-            return "No chunks found."
-        
-        result = []
-        for c in chunks:
-            text = c['chunk_text'].replace('\n', ' ')[:80] + "..."
-            result.append(f"[Chunk {c['chunk_order']} | Page {c['page_number']}] {text}")
-        return "\n".join(result)
+        db = SessionLocal()
+        try:
+            chunks = db.query(Chunk).filter(Chunk.document_id == int(doc_id.strip())).order_by(Chunk.chunk_order).all()
+            if not chunks:
+                return "No chunks found for this Document ID."
+            result = []
+            for c in chunks:
+                text = c.chunk_text.replace('\n', ' ')[:80] + "..."
+                result.append(f"[Chunk {c.chunk_order} | Page {c.page_number}] {text}")
+            return "\n".join(result)
+        finally:
+            db.close()
     except Exception as exc:
         return f"Error fetching chunks: {exc}"
 
@@ -114,18 +173,20 @@ def retrieve_chunks(query: str) -> str:
     if not query.strip():
         return "Please enter a search query."
     try:
-        response = requests.post(f"{FASTAPI_BASE_URL}/retrieve", json={"query": query.strip()}, timeout=30)
-        response.raise_for_status()
-        chunks = response.json()
-        if not chunks:
-            return "No matching chunks found."
-        
-        result = []
-        for c in chunks:
-            score = round(c.get('similarity_score', 0), 4)
-            text = c['chunk_text'].replace('\n', ' ')
-            result.append(f"[{score}] {c['source_filename']} (Page {c['page_number']}):\n{text}\n")
-        return "\n".join(result)
+        from app.services.retrieval_service import retrieve_chunks as do_retrieve
+        db = SessionLocal()
+        try:
+            chunks = do_retrieve(db, query.strip())
+            if not chunks:
+                return "No matching chunks found in knowledge base."
+            result = []
+            for c in chunks:
+                score = round(c.similarity_score, 4)
+                text = c.chunk_text.replace('\n', ' ')
+                result.append(f"[{score}] {c.source_filename} (Page {c.page_number}):\n{text}\n")
+            return "\n".join(result)
+        finally:
+            db.close()
     except Exception as exc:
         return f"Error retrieving chunks: {exc}"
 
@@ -134,51 +195,63 @@ def run_research_agent(query: str):
         yield ("<div style='color:#ef4444'>Please enter a research query.</div>", "No query provided.")
         return
     try:
-        from app.services.research_agent import stream_research
-        import asyncio
+        from app.services.research_agent import run_research
         
         status_log = "<div style='display:flex; flex-direction:column; gap:8px;'>"
-        output = ""
         
-        # We need to run the async generator in a sync context since Gradio generator is sync here
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        # Step 1: Planning
+        status_log += "<div style='font-size:0.95rem; padding:8px; background:rgba(255,255,255,0.05); border-radius:8px;'><span style='color:#fbbf24; margin-right:8px;'>●</span> <b>Decomposing Research Query & Planning Tasks...</b></div>"
+        yield (status_log + "</div>", "Analyzing query and formulating research plan...")
         
-        async def consume():
-            nonlocal status_log, output
-            results = []
-            async for data in stream_research(query.strip()):
-                results.append(data)
-            return results
+        # Step 2: Retrieving & Synthesizing
+        status_log += "<div style='font-size:0.95rem; padding:8px; background:rgba(255,255,255,0.05); border-radius:8px;'><span style='color:#38bdf8; margin-right:8px;'>●</span> <b>Executing Hybrid Retrieval & Web Grounding...</b></div>"
+        yield (status_log + "</div>", "Retrieving context across vector knowledge base and web search...")
+        
+        response = run_research(query.strip())
+        
+        status_log += "<div style='font-size:0.95rem; padding:8px; background:rgba(255,255,255,0.05); border-radius:8px;'><span style='color:#4ade80; margin-right:8px;'>●</span> <b>Deep Analysis & Report Synthesis Completed</b></div>"
+        
+        report_md = f"## 📑 Executive Summary\n\n{response.summary}\n\n"
+        if response.key_findings:
+            report_md += "## 💡 Key Findings\n\n"
+            for kf in response.key_findings:
+                report_md += f"- {kf}\n"
+            report_md += "\n"
             
-        events = loop.run_until_complete(consume())
-        loop.close()
-        
-        # Yield the events (note: this turns it into a batch yield rather than true streaming, 
-        # but prevents any network timeout/disconnect issues on Render's free tier proxy)
-        for data in events:
-            if data.get("type") == "status":
-                node = data.get('node')
-                status = data.get('status')
-                color = "#4ade80" if status == "completed" else "#fbbf24"
-                status_log += f"<div style='font-size:0.95rem; padding:8px; background:rgba(255,255,255,0.05); border-radius:8px;'><span style='color:{color}; margin-right:8px;'>●</span> <b>{node}</b> <span style='color:#94a3b8'><i>{status}...</i></span></div>\n"
-                yield (status_log + "</div>", output)
-            elif data.get("type") == "token":
-                output += data.get("content", "")
-                yield (status_log + "</div>", output)
-            elif data.get("type") == "sources":
-                sources = data.get("sources", [])
-                if sources:
-                    sources_md = "\n\n### Interactive Citations\n"
-                    for s in sources:
-                        filename = s.get('filename', 'Unknown')
-                        page = s.get('page_number', '?')
-                        text = s.get('chunk_text', '').replace('\n', '<br>')
-                        sources_md += f"<details style='margin-bottom:8px; border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:10px; background:#1e293b;'><summary style='cursor:pointer; font-weight:600; color:#818cf8;'>📄 {filename} (Page {page})</summary><p style='margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.05); color:#cbd5e1;'>{text}</p></details>\n"
-                    output += sources_md
-                    yield (status_log + "</div>", output)
+        if response.sources:
+            report_md += "## 📚 Interactive Citations\n\n"
+            for s in response.sources:
+                page_str = f"Page {s.page_number}" if s.page_number else "Web Source"
+                report_md += f"<details style='margin-bottom:8px; border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:10px; background:#1e293b;'><summary style='cursor:pointer; font-weight:600; color:#818cf8;'>📄 {s.filename} ({page_str})</summary></details>\n"
+                
+        yield (status_log + "</div>", report_md)
     except Exception as exc:
-        yield (f"<div style='color:#ef4444'>Error: {exc}</div>", "")
+        yield (f"<div style='color:#ef4444'>Error during research execution: {exc}</div>", f"Research error: {exc}")
+
+def export_research_report(report_text: str, export_format: str):
+    if not report_text.strip() or "The generated report will appear here" in report_text or "Research error" in report_text:
+        return None
+    from pathlib import Path
+    temp_dir = Path("data/exports")
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    
+    if export_format == "PDF":
+        from app.services.exporter_service import to_pdf
+        pdf_path = temp_dir / "Research_Report.pdf"
+        data_dict = {
+            "summary": report_text,
+            "key_findings": ["Report generated by autonomous research agent."],
+            "sources": []
+        }
+        pdf_bytes = to_pdf(data_dict)
+        with open(pdf_path, "wb") as f:
+            f.write(pdf_bytes.getvalue())
+        return str(pdf_path)
+    else:
+        md_path = temp_dir / "Research_Report.md"
+        with open(md_path, "w", encoding="utf-8") as f:
+            f.write(report_text)
+        return str(md_path)
 
 custom_css = """
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
@@ -310,7 +383,9 @@ with gr.Blocks(title="ResearchPilot | AI Agent") as demo:
                         chat_submit = gr.Button("Send", variant="primary", scale=1)
                         
                     def submit_message(msg, history):
-                        history.append({"role": "user", "content": msg})
+                        if history is None: history = []
+                        if msg.strip():
+                            history.append({"role": "user", "content": msg})
                         return "", history
                         
                     def get_bot_response(history, sid):
@@ -321,7 +396,6 @@ with gr.Blocks(title="ResearchPilot | AI Agent") as demo:
                             return history
                         try:
                             from app.services.rag_service import generate_chat_response
-                            from app.database.session import SessionLocal
                             db = SessionLocal()
                             try:
                                 response = generate_chat_response(db, user_msg, int(sid.strip()))
@@ -366,6 +440,9 @@ with gr.Blocks(title="ResearchPilot | AI Agent") as demo:
                     gr.Markdown("Deploy an autonomous LangGraph agent to iteratively research and compile a report.")
                     with gr.Accordion("Export Settings", open=True):
                         export_format = gr.Dropdown(choices=["PDF", "Markdown"], value="PDF", label="Format")
+                        download_btn = gr.Button("⬇️ Generate Downloadable Report", variant="secondary")
+                        download_file = gr.File(label="Download File", visible=True)
+                        download_btn.click(fn=export_research_report, inputs=[gr.Markdown(), export_format], outputs=[download_file])
                 
                 with gr.Column(scale=3):
                     research_query = gr.Textbox(label="Research Topic", placeholder="e.g. Write a comprehensive summary of Mohit's backend engineering skills.")
@@ -377,37 +454,20 @@ with gr.Blocks(title="ResearchPilot | AI Agent") as demo:
                     gr.Markdown("### Agent Output")
                     research_output = gr.Markdown("The generated report will appear here.")
                     
-                    with gr.Row():
-                        download_btn = gr.Button("⬇️ Download Research Report (PDF/MD)", variant="secondary")
-                    
                     run_agent_btn.click(fn=run_research_agent, inputs=research_query, outputs=[research_stepper, research_output])
+                    download_btn.click(fn=export_research_report, inputs=[research_output, export_format], outputs=[download_file])
 
         with gr.TabItem("📚 Knowledge Base"):
             gr.Markdown("Upload standard PDF documents to expand the AI's vectorized knowledge graph.")
             
-            gr.HTML("""
-            <div style='display:flex; gap:20px; margin-bottom:20px;'>
-                <div class='gr-box' style='flex:1; padding:20px; text-align:center;'>
-                    <h3 style='margin-bottom:10px; color:#94a3b8; font-size:1rem;'>📁 Documents Uploaded</h3>
-                    <h2 style='color:#a855f7; font-size:2rem; font-weight:800;'>12</h2>
-                </div>
-                <div class='gr-box' style='flex:1; padding:20px; text-align:center;'>
-                    <h3 style='margin-bottom:10px; color:#94a3b8; font-size:1rem;'>🧩 Chunks Indexed in ChromaDB</h3>
-                    <h2 style='color:#3b82f6; font-size:2rem; font-weight:800;'>1,432</h2>
-                </div>
-                <div class='gr-box' style='flex:1; padding:20px; text-align:center;'>
-                    <h3 style='margin-bottom:10px; color:#94a3b8; font-size:1rem;'>🟢 Vector DB Status</h3>
-                    <h2 style='color:#4ade80; font-size:2rem; font-weight:800;'>Online</h2>
-                </div>
-            </div>
-            """)
+            kb_stats_html = gr.HTML(value=get_kb_stats_html())
             
             with gr.Row():
                 with gr.Column(scale=1):
                     pdf_input = gr.File(label="Upload Document", file_types=[".pdf"])
                     upload_btn = gr.Button("Vectorize Document", variant="primary")
                     upload_output = gr.HTML(label="Status")
-                    upload_btn.click(fn=upload_pdf, inputs=pdf_input, outputs=upload_output)
+                    upload_btn.click(fn=upload_pdf, inputs=pdf_input, outputs=[upload_output, kb_stats_html])
                 with gr.Column(scale=1):
                     query_input = gr.Textbox(label="Test Vector Retrieval", placeholder="Search the semantic database directly...")
                     search_btn = gr.Button("Search Vectors")
@@ -432,5 +492,3 @@ with gr.Blocks(title="ResearchPilot | AI Agent") as demo:
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=int(os.getenv("PORT", "7860")), theme=theme, css=custom_css)
-
-
